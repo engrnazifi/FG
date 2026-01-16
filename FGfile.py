@@ -1704,8 +1704,8 @@ def reply_menu(uid=None):
     )
 
     if uid in ADMINS:
-        kb.add(InlineKeyboardButton("🏆ADD MOVIE", callback_data="addmovie"))
-        kb.add(InlineKeyboardButton("☢SERIES MODE", callback_data="groupitems"))
+       
+        kb.add(InlineKeyboardButton("☢SERIES&ADD🎬", callback_data="groupitems"))
         kb.add(InlineKeyboardButton("🧹 ERASER", callback_data="eraser_menu"))
         kb.add(InlineKeyboardButton("📂WEAK UPDATE", callback_data="weak_update"))
         
