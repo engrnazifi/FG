@@ -329,8 +329,8 @@ ADMIN_ID = 6210912739
 OTP_ADMIN_ID = 6603268127
 
 
-BOT_USERNAME = "Gwajinbot"
-CHANNEL = "@buydatachannel"
+BOT_USERNAME = "Aslamtv2bot"
+CHANNEL = "@Aslammovieschannel"
 
 # Flutterwave
 FLW_PUBLIC_KEY = os.getenv("FLW_PUBLIC_KEY")
