@@ -527,7 +527,10 @@ def flutterwave_webhook():
         if status not in ("successful", "success"):
             return "Ignored", 200
 
-        order_id = str(data.get("tx_ref") or "")
+        # ===== FIX: MATCH ORDER ID WITH DB =====
+        raw_ref = str(data.get("tx_ref") or "")
+        order_id = raw_ref.split("_")[0]
+
         currency = data.get("currency")
         paid_amount = int(float(data.get("amount", 0)))
 
@@ -561,7 +564,7 @@ def flutterwave_webhook():
             conn.close()
             return "Wrong payment", 200
 
-        # ================= ITEMS (GROUPED - NO DUPLICATE TITLES) =================
+        # ================= ITEMS =================
         cur.execute(
             """
             SELECT i.title, i.group_key
@@ -625,11 +628,10 @@ def flutterwave_webhook():
         )
 
         conn.commit()
-
         cur.close()
         conn.close()
 
-        # ================= USER MESSAGE (OLD FORMAT) =================
+        # ================= USER MESSAGE =================
         kb = InlineKeyboardMarkup()
         kb.add(
             InlineKeyboardButton(
@@ -682,7 +684,7 @@ Item names:
 
         return "OK", 200
 
-    except Exception as e:
+    except Exception:
         return "ERROR", 500
 
 
