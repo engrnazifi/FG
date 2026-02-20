@@ -644,9 +644,9 @@ def flutterwave_webhook():
             user_id,
             f"""Hi {full_name} 👋
 
-🎉 <b>An tabbatar da biyanka cikin nasara.</b>
+🎉 <b>An tabbatar da biyanka Alhamdulillah✅.</b>
 
-🎬 <b>Yanzu ka riga ka mallaki:</b>
+🎬 <b>Yanzu ka riga ka mallaki✅:</b>
 {titles_text}
 
 ━━━━━━━━━━━━━━
@@ -655,8 +655,8 @@ def flutterwave_webhook():
 🆔 <b>Ref:</b> <code>{order_id}</code>
 ━━━━━━━━━━━━━━
 
-Mun gode da amincewa da mu 🤍  
-Danna <b>DOWNLOAD ITEMS</b> domin karɓa yanzu.
+🙏Mun gode da amincewa da mu 🤍  
+Danna <b>DOWNLOAD ITEMS</b> domin karɓa yanzu👇👇👇.
 """,
             parse_mode="HTML",
             reply_markup=kb
