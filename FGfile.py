@@ -4100,10 +4100,22 @@ Danna Pay now domin biya 👇👇
         conn.close()
 
 
-
-# ======= GROUPITEM (IDS + GROUP_KEY SUPPORT | UPDATED FORMAT) =========
+# ======= GROUPITEM (IDS + GROUP_KEY SUPPORT | UPDATED FORMAT | DEBUG MODE) =========
 from psycopg2.extras import RealDictCursor
 import uuid
+import traceback
+import datetime
+
+ADMIN_ID = 123456789  # <-- SA ID NAKA NAN
+
+def debug_log(text):
+    try:
+        stamp = datetime.datetime.now().strftime("%H:%M:%S")
+        print(f"[DEBUG {stamp}] {text}")
+        bot.send_message(ADMIN_ID, f"🛠 DEBUG\n<code>{text}</code>", parse_mode="HTML")
+    except:
+        pass
+
 
 @bot.message_handler(func=lambda m: m.text and m.text.startswith("/start groupitem_"))
 def groupitem_deeplink_handler(msg):
@@ -4111,64 +4123,83 @@ def groupitem_deeplink_handler(msg):
     try:
         uid = msg.from_user.id
         raw = msg.text.split("groupitem_", 1)[1].strip()
-    except Exception:
+        debug_log(f"START | UID={uid} | RAW={raw}")
+    except Exception as e:
+        debug_log(f"START ERROR: {e}")
         return
 
     conn = get_conn()
     if not conn:
+        debug_log("DB CONNECTION FAILED")
         return
 
     cur = conn.cursor(cursor_factory=RealDictCursor)
-
     items = []
 
     # ================= MODE 1: IDS =================
-    if all(x.strip().isdigit() for x in raw.replace("_", ",").split(",")):
+    try:
+        if all(x.strip().isdigit() for x in raw.replace("_", ",").split(",")):
 
-        sep = "_" if "_" in raw else ","
-        item_ids = [int(x) for x in raw.split(sep) if x.strip().isdigit()]
+            debug_log("MODE: IDS")
 
-        if not item_ids:
-            cur.close()
-            conn.close()
-            return
+            sep = "_" if "_" in raw else ","
+            item_ids = [int(x) for x in raw.split(sep) if x.strip().isdigit()]
+            debug_log(f"IDS FOUND: {item_ids}")
 
-        placeholders = ",".join(["%s"] * len(item_ids))
+            if not item_ids:
+                debug_log("NO VALID IDS")
+                cur.close()
+                conn.close()
+                return
 
-        cur.execute(
-            f"""
-            SELECT id, title, price, file_id, group_key
-            FROM items
-            WHERE id IN ({placeholders})
-            """,
-            tuple(item_ids)
-        )
+            placeholders = ",".join(["%s"] * len(item_ids))
 
-        items = cur.fetchall()
+            cur.execute(
+                f"""
+                SELECT id, title, price, file_id, group_key
+                FROM items
+                WHERE id IN ({placeholders})
+                """,
+                tuple(item_ids)
+            )
 
-    # ================= MODE 2: GROUP_KEY =================
-    else:
+            items = cur.fetchall()
 
-        cur.execute(
-            """
-            SELECT id, title, price, file_id, group_key
-            FROM items
-            WHERE group_key=%s
-            ORDER BY id ASC
-            """,
-            (raw,)
-        )
+        else:
+            debug_log("MODE: GROUP_KEY")
 
-        items = cur.fetchall()
+            cur.execute(
+                """
+                SELECT id, title, price, file_id, group_key
+                FROM items
+                WHERE group_key=%s
+                ORDER BY id ASC
+                """,
+                (raw,)
+            )
+
+            items = cur.fetchall()
+
+        debug_log(f"ITEMS FETCHED: {len(items)}")
+
+    except Exception as e:
+        debug_log(f"FETCH ERROR: {traceback.format_exc()}")
+        cur.close()
+        conn.close()
+        return
 
     if not items:
+        debug_log("NO ITEMS FOUND")
         cur.close()
         conn.close()
         return
 
     # ================= FILE CHECK =================
     items = [i for i in items if i.get("file_id")]
+    debug_log(f"ITEMS AFTER FILE CHECK: {len(items)}")
+
     if not items:
+        debug_log("NO FILE_ID ITEMS")
         cur.close()
         conn.close()
         return
@@ -4188,12 +4219,15 @@ def groupitem_deeplink_handler(msg):
             (uid, *item_ids_clean)
         )
         owned = cur.fetchone()
+        debug_log(f"OWNERSHIP RESULT: {owned}")
     except Exception:
+        debug_log(f"OWNERSHIP ERROR: {traceback.format_exc()}")
         cur.close()
         conn.close()
         return
 
     if owned:
+        debug_log("USER ALREADY OWNS ITEM")
         cur.close()
         conn.close()
         return
@@ -4208,7 +4242,10 @@ def groupitem_deeplink_handler(msg):
     total = sum(groups.values())
     item_count = len(items)
 
+    debug_log(f"TOTAL CALCULATED: {total}")
+
     if total <= 0:
+        debug_log("TOTAL INVALID")
         cur.close()
         conn.close()
         return
@@ -4230,15 +4267,19 @@ def groupitem_deeplink_handler(msg):
             (uid, *item_ids_clean, len(item_ids_clean))
         )
         row = cur.fetchone()
+        debug_log(f"OLD ORDER CHECK: {row}")
     except Exception:
+        debug_log(f"OLD ORDER ERROR: {traceback.format_exc()}")
         cur.close()
         conn.close()
         return
 
     if row:
         order_id = row["id"]
+        debug_log(f"REUSING ORDER: {order_id}")
     else:
         order_id = str(uuid.uuid4())
+        debug_log(f"CREATING NEW ORDER: {order_id}")
         try:
             cur.execute(
                 "INSERT INTO orders (id, user_id, amount, paid) VALUES (%s,%s,%s,0)",
@@ -4255,43 +4296,49 @@ def groupitem_deeplink_handler(msg):
                 )
 
             conn.commit()
+            debug_log("ORDER INSERT SUCCESS")
         except Exception:
             conn.rollback()
+            debug_log(f"ORDER INSERT ERROR: {traceback.format_exc()}")
             cur.close()
             conn.close()
             return
 
     # ================= PAYSTACK PAYMENT LINK =================
     try:
+        debug_log("CALLING PAYSTACK")
         pay_url = create_paystack_payment(
             uid,
             order_id,
             total,
-            items[0]["title"]  # same format as before
+            items[0]["title"]
         )
+        debug_log(f"PAYSTACK RESPONSE: {pay_url}")
     except Exception:
+        debug_log(f"PAYSTACK ERROR: {traceback.format_exc()}")
         cur.close()
         conn.close()
         return
 
     if not pay_url:
+        debug_log("PAYSTACK RETURNED EMPTY LINK")
         cur.close()
         conn.close()
         return
 
-    # ================= BUTTONS =================
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("💳 PAY NOW", url=pay_url))
-    kb.add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel:{order_id}"))
+    # ================= TELEGRAM SEND =================
+    try:
+        kb = InlineKeyboardMarkup()
+        kb.add(InlineKeyboardButton("💳 PAY NOW", url=pay_url))
+        kb.add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel:{order_id}"))
 
-    first_name = msg.from_user.first_name or ""
-    last_name = msg.from_user.last_name or ""
-    full_name = f"{first_name} {last_name}".strip()
+        first_name = msg.from_user.first_name or ""
+        last_name = msg.from_user.last_name or ""
+        full_name = f"{first_name} {last_name}".strip()
 
-    # ================= NEW FORMAT MESSAGE =================
-    bot.send_message(
-        uid,
-        f"""🧾 <b>Order Created</b>
+        bot.send_message(
+            uid,
+            f"""🧾 <b>Order Created</b>
 
 👤 <b>Name:</b> {full_name}
 
@@ -4306,14 +4353,17 @@ def groupitem_deeplink_handler(msg):
 
 Danna Pay now domin biya 👇👇
 """,
-        parse_mode="HTML",
-        reply_markup=kb
-    )
+            parse_mode="HTML",
+            reply_markup=kb
+        )
+
+        debug_log("TELEGRAM MESSAGE SENT SUCCESSFULLY")
+
+    except Exception:
+        debug_log(f"TELEGRAM SEND ERROR: {traceback.format_exc()}")
 
     cur.close()
     conn.close()
-
-
 # ================= ADMIN MANUAL SUPPORT SYSTEM =================
 
 ADMIN_SUPPORT = {}
