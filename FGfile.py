@@ -5829,10 +5829,12 @@ Danna Pay now domin biya 👇👇
 
         bot.answer_callback_query(c.id)
         return
+    
+
     # ==================================================
-    # BUY / BUYDM  ✅ (Support IDS + GROUP_KEY)
+    # BUY / BUYDM / BUYGROUP  ✅ (Support IDS + GROUP_KEY)
     # ==================================================
-    if data.startswith("buy:") or data.startswith("buydm:"):
+    if data.startswith("buy:") or data.startswith("buydm:") or data.startswith("buygroup:"):
 
         raw = data.split(":", 1)[1].strip()
 
@@ -5899,30 +5901,32 @@ Danna Pay now domin biya 👇👇
             ids_clean = [i["id"] for i in items]
             placeholders2 = ",".join(["%s"] * len(ids_clean))
 
-            # OWNERSHIP CHECK
+            # ================= OWNERSHIP CHECK =================
             cur.execute(
                 f"""
-                SELECT 1 FROM user_movies
+                SELECT COUNT(DISTINCT item_id) as total_owned
+                FROM user_movies
                 WHERE user_id=%s AND item_id IN ({placeholders2})
-                LIMIT 1
                 """,
                 (uid, *ids_clean)
             )
 
-            if cur.fetchone():
+            owned_count = cur.fetchone()["total_owned"]
+
+            if owned_count == len(ids_clean):
 
                 kb = InlineKeyboardMarkup()
-                kb.add(InlineKeyboardButton("🎬 MY MOVIES", callback_data="my_movies"))
+                kb.add(InlineKeyboardButton("📽 PAID MOVIES", callback_data="my_movies"))
 
                 bot.send_message(
                     uid,
-                    "✅ <b>Ka riga ka mallaki wannan fim.</b>",
+                    "✅ <b>Ka riga ka mallaki wannan fim.</b>\n\nZaka iya sake karɓarsa a 📽PAID MOVIES.",
                     parse_mode="HTML",
                     reply_markup=kb
                 )
                 return
 
-            # GROUP TOTAL
+            # ================= GROUP TOTAL =================
             groups = {}
             for i in items:
                 key = i["group_key"] or f"single_{i['id']}"
@@ -5935,7 +5939,7 @@ Danna Pay now domin biya 👇👇
                 bot.answer_callback_query(c.id, "❌ Farashi bai dace ba.")
                 return
 
-            # EXACT UNPAID REUSE
+            # ================= EXACT UNPAID REUSE =================
             cur.execute(
                 f"""
                 SELECT o.id
@@ -5987,7 +5991,10 @@ Danna Pay now domin biya 👇👇
             if conn:
                 conn.close()
 
-        title = items[0]["title"] if len(items) == 1 else f"{len(items)} Items"
+        # ================= FORMAT LIKE YOUR SCREENSHOT =================
+
+        user_name = c.from_user.first_name or "User"
+        title = items[0]["title"] if len(items) == 1 else f"{len(items)} Films"
 
         pay_url = create_flutterwave_payment(uid, order_id, total, title)
         if not pay_url:
@@ -5999,24 +6006,28 @@ Danna Pay now domin biya 👇👇
 
         bot.send_message(
             uid,
-            f"""🛒 <b>ORDER SUMMARY</b>
+            f"""📄 <b>Order Created</b>
 
-🎬 <b>{title}</b>
-📦 Items: <b>{len(items)}</b>
-💰 Total: <b>₦{total:,}</b>
+👤 <b>Name:</b> {user_name}
 
-━━━━━━━━━━━━━━
+🎬 <b>You will buy this film</b>
+{title}
+
+📦 <b>Films:</b> {len(items)}
+💰 <b>Total:</b> ₦{total:,}
+
 🆔 <b>Order ID:</b>
 <code>{order_id}</code>
-━━━━━━━━━━━━━━
 
-💳 Click PAY NOW to complete payment.""",
+Danna Pay now domin biya 👇👇""",
             parse_mode="HTML",
             reply_markup=kb
         )
 
         bot.answer_callback_query(c.id)
         return
+
+
 
     # ================= MY MOVIES =================
     if data == "my_movies":
