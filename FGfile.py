@@ -1448,7 +1448,6 @@ def ignore_unexpected_text(m):
 # ======================================================
 # ACTIVE BUYERS (ADMIN ONLY | PAGINATION | EDIT MODE)
 # ======================================================
-
 # ================== END RUKUNI B ==================
 
 @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("cancel:"))
@@ -1479,11 +1478,15 @@ def cancel_order_handler(c):
     if not order:
         cur.close()
         conn.close()
-        bot.send_message(
-            uid,
-            "❌ <b>Ba a sami order ba ko kuma an riga an biya shi.</b>",
-            parse_mode="HTML"
-        )
+        try:
+            bot.edit_message_text(
+                "❌ <b>Ba a sami order ba ko kuma an riga an biya shi.</b>",
+                chat_id=c.message.chat.id,
+                message_id=c.message.message_id,
+                parse_mode="HTML"
+            )
+        except:
+            pass
         return
 
     # 🧹 Goge order_items
@@ -1502,11 +1505,18 @@ def cancel_order_handler(c):
     cur.close()
     conn.close()
 
-    bot.send_message(
-        uid,
-        "❌ <b>An soke wannan order ɗin.</b>",
-        parse_mode="HTML"
-    )
+    # ✅ EDIT MESSAGE MAIMAKON SABON SAKO
+    try:
+        bot.edit_message_text(
+            "❌ <b>An soke wannan order ɗin.</b>",
+            chat_id=c.message.chat.id,
+            message_id=c.message.message_id,
+            parse_mode="HTML"
+        )
+    except:
+        pass
+
+
 
 # --- Added callback handler for in-bot "View All Movies" buttons ---
 @bot.callback_query_handler(func=lambda c: c.data in ("view_all_movies","viewall"))
