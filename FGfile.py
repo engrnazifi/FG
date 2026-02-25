@@ -5234,9 +5234,13 @@ def safe_edit(chat_id, msg_id, text, kb=None):
         pass
 
 
-def _unique_add(res, seen, key, title, price, ids):
+def _unique_add(res, seen, key, title, price, ids, group_key=None):
     if key not in seen:
-        res.append((ids, title, price))
+        # idan akwai group_key mu mayar da shi
+        if group_key:
+            res.append((group_key, title, price))
+        else:
+            res.append((ids, title, price))
         seen.add(key)
 
 
@@ -5273,12 +5277,21 @@ def search_by_name(query):
             groups.setdefault(key, {
                 "ids": [],
                 "title": title,
-                "price": price
+                "price": price,
+                "group_key": gk
             })
             groups[key]["ids"].append(mid)
 
     for k, g in groups.items():
-        _unique_add(res, seen, k, g["title"], g["price"], g["ids"])
+        _unique_add(
+            res,
+            seen,
+            k,
+            g["title"],
+            g["price"],
+            g["ids"],
+            g["group_key"]
+        )
 
     return res
 
@@ -5286,11 +5299,18 @@ def search_by_name(query):
 # ---------- ALGAITA ----------
 def get_algaita_movies():
     res, seen = [], set()
-    for mid, title, price, fname, _, _ in _get_all_items():
+
+    for mid, title, price, fname, _, gk in _get_all_items():
         if "algaita" in (_norm(title) + " " + _norm(fname)):
-            if mid not in seen:
-                res.append(([mid], title, price))
-                seen.add(mid)
+            key = gk or f"single_{mid}"
+
+            if key not in seen:
+                if gk:
+                    res.append((gk, title, price))
+                else:
+                    res.append(([mid], title, price))
+                seen.add(key)
+
     return res
 
 
@@ -5301,11 +5321,24 @@ def get_hausa_series_movies():
     for mid, title, price, fname, _, gk in _get_all_items():
         if title and "(" in title and "-" in title and ")" in title:
             key = gk or f"single_{mid}"
-            groups.setdefault(key, {"ids": [], "title": title, "price": price})
+            groups.setdefault(key, {
+                "ids": [],
+                "title": title,
+                "price": price,
+                "group_key": gk
+            })
             groups[key]["ids"].append(mid)
 
     for k, g in groups.items():
-        _unique_add(res, seen, k, g["title"], g["price"], g["ids"])
+        _unique_add(
+            res,
+            seen,
+            k,
+            g["title"],
+            g["price"],
+            g["ids"],
+            g["group_key"]
+        )
 
     return res
 
@@ -5317,15 +5350,26 @@ def get_public_movies():
     for mid, title, price, fname, _, gk in _get_all_items():
         if title and "(" in title and ")" in title and ("-" in title or "+" in title):
             key = gk or f"single_{mid}"
-            groups.setdefault(key, {"ids": [], "title": title, "price": price})
+            groups.setdefault(key, {
+                "ids": [],
+                "title": title,
+                "price": price,
+                "group_key": gk
+            })
             groups[key]["ids"].append(mid)
 
     for k, g in groups.items():
-        _unique_add(res, seen, k, g["title"], g["price"], g["ids"])
+        _unique_add(
+            res,
+            seen,
+            k,
+            g["title"],
+            g["price"],
+            g["ids"],
+            g["group_key"]
+        )
 
     return res
-
-
 # ======================================================
 # ================= DISPLAY HELPERS ====================
 # ======================================================
