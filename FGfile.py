@@ -561,7 +561,7 @@ def flutterwave_webhook():
         cur = conn.cursor()
 
         cur.execute(
-            "SELECT user_id, amount, paid FROM orders WHERE id=%s",
+            "SELECT user_id, amount, paid, message_id FROM orders WHERE id=%s",
             (order_id,)
         )
         row = cur.fetchone()
@@ -571,7 +571,7 @@ def flutterwave_webhook():
             conn.close()
             return "Order not found", 200
 
-        user_id, expected_amount, paid = row
+        user_id, expected_amount, paid, message_id = row
 
         if paid == 1:
             cur.close()
@@ -659,9 +659,7 @@ def flutterwave_webhook():
             )
         )
 
-        bot.send_message(
-            user_id,
-            f"""Hi {full_name} 👋
+        confirmation_text = f"""Hi {full_name} 👋
 
 🎉 <b>An tabbatar da biyanka Alhamdulillah✅.</b>
 
@@ -676,10 +674,32 @@ def flutterwave_webhook():
 
 🙏Mun gode da amincewa da mu 🤍  
 Danna <b>DOWNLOAD ITEMS</b> domin karɓa yanzu👇👇👇.
-""",
-            parse_mode="HTML",
-            reply_markup=kb
-        )
+"""
+
+        # ===== EDIT OLD MESSAGE INSTEAD OF NEW SEND =====
+        if message_id:
+            try:
+                bot.edit_message_text(
+                    confirmation_text,
+                    chat_id=user_id,
+                    message_id=message_id,
+                    parse_mode="HTML",
+                    reply_markup=kb
+                )
+            except Exception:
+                bot.send_message(
+                    user_id,
+                    confirmation_text,
+                    parse_mode="HTML",
+                    reply_markup=kb
+                )
+        else:
+            bot.send_message(
+                user_id,
+                confirmation_text,
+                parse_mode="HTML",
+                reply_markup=kb
+            )
 
         # ================= ADMIN GROUP =================
         if PAYMENT_NOTIFY_GROUP:
@@ -705,7 +725,6 @@ Item names:
 
     except Exception:
         return "ERROR", 500
-
 
 @app.route("/telegram", methods=["POST"])
 def telegram_webhook():
