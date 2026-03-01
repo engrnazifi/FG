@@ -85,9 +85,12 @@ CREATE TABLE IF NOT EXISTS orders (
     amount INTEGER,
     paid INTEGER DEFAULT 0,
     pay_ref TEXT,
+    message_id BIGINT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 """)
+
+
 
 # -------- ORDER ITEMS --------
 cur.execute("""
