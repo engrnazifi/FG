@@ -4131,8 +4131,6 @@ Danna Pay now domin biya 👇👇
         cur.close()
         conn.close()
 
-
-
 # ======= GROUPITEM (IDS + GROUP_KEY SUPPORT | UPDATED FORMAT) =========
 from psycopg2.extras import RealDictCursor
 import uuid
@@ -4299,7 +4297,7 @@ def groupitem_deeplink_handler(msg):
             uid,
             order_id,
             total,
-            items[0]["title"]  # same format as before
+            items[0]["title"]
         )
     except Exception:
         cur.close()
@@ -4321,7 +4319,7 @@ def groupitem_deeplink_handler(msg):
     full_name = f"{first_name} {last_name}".strip()
 
     # ================= NEW FORMAT MESSAGE =================
-    bot.send_message(
+    sent_msg = bot.send_message(
         uid,
         f"""🧾 <b>Order Created</b>
 
@@ -4341,6 +4339,16 @@ Danna Pay now domin biya 👇👇
         parse_mode="HTML",
         reply_markup=kb
     )
+
+    # ================= SAVE MESSAGE ID =================
+    try:
+        cur.execute(
+            "UPDATE orders SET message_id=%s WHERE id=%s",
+            (sent_msg.message_id, order_id)
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
 
     cur.close()
     conn.close()
