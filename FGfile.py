@@ -2617,8 +2617,9 @@ def vipgroup_handler(c):
         )
         conn.commit()
 
-    # ========= CREATE PAYMENT LINK =========
-    pay_url = create_paystack_payment(
+    # ========= CREATE PAYMENT LINK (Flutterwave) =========
+    # Mun sauya daga create_paystack_payment zuwa create_flutterwave_payment
+    pay_url = create_flutterwave_payment(
         uid,
         order_id,
         VIP_PRICE,
@@ -2626,6 +2627,7 @@ def vipgroup_handler(c):
     )
 
     if not pay_url:
+        bot.send_message(uid, "❌ Sorry, payment gateway is down. Try again later.")
         cur.close()
         conn.close()
         return
@@ -2669,6 +2671,9 @@ Tap below to continue👇.
 
     cur.close()
     conn.close()
+
+
+
 
 import threading  
 import time  
