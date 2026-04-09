@@ -890,8 +890,8 @@ def home():
     return "OK", 200
 
 # ========= CALLBACK PAGE =========
-@app.route("/paystack-callback", methods=["GET"])
-def paystack_callback():
+@app.route("flutterwave-callback", methods=["GET"])
+def flutterwave_callback():
     return """
     <html>
     <head>
