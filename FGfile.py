@@ -816,6 +816,12 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 # ========= BOT =========
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
+# ========= FLASK =========
+app = Flask(__name__)
+
+
+
+
 import time
 
 # ========= FLUTTERWAVE PAYMENT =========
