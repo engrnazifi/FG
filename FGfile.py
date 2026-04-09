@@ -829,39 +829,62 @@ bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 # ========= FLASK =========
 app = Flask(__name__)
 
-import time
 
-def create_paystack_payment(user_id, order_id, amount, title):
+import time
+import requests
+
+def create_flutterwave_payment(user_id, order_id, amount, title):
+    # ================= HEADERS =================
     headers = {
-        "Authorization": f"Bearer {PAYSTACK_SECRET}",
+        "Authorization": f"Bearer {FLW_SECRET_KEY}",
         "Content-Type": "application/json"
     }
 
+    # ================= PAYLOAD (FLUTTERWAVE FORMAT) =================
     payload = {
-        "reference": f"{order_id}_{int(time.time())}",  # ✅ FIX
-        "amount": int(amount) * 100,
+        "tx_ref": f"{order_id}_{int(time.time())}",  # ✅ Kamar yadda muka yi a baya
+        "amount": str(amount),
         "currency": "NGN",
-        "callback_url": PAYSTACK_REDIRECT_URL,
-        "email": f"user{user_id}@telegram.com",
-        "metadata": {
+        "redirect_url": FLW_REDIRECT_URL,
+        "payment_options": "card,ussd,banktransfer",
+        "customer": {
+            "email": f"user{user_id}@telegram.com",
+            "name": f"User {user_id}"
+        },
+        "customizations": {
+            "title": "Payment for " + title[:40],
+            "description": f"Order ID: {order_id}"
+        },
+        "meta": {
             "order_id": str(order_id),
             "user_id": user_id,
             "title": title[:50]
         }
     }
 
-    r = requests.post(
-        f"{PAYSTACK_BASE}/transaction/initialize",
-        json=payload,
-        headers=headers,
-        timeout=30
-    )
+    # ================= REQUEST =================
+    try:
+        r = requests.post(
+            "https://api.flutterwave.com/v3/payments",
+            json=payload,
+            headers=headers,
+            timeout=30
+        )
+        
+        data = r.json()
+        
+        # Duba idan komai yayi nasara
+        if data.get("status") != "success":
+            print(f"Flutterwave Error: {data.get('message')}")
+            return None
 
-    data = r.json()
-    if not data.get("status"):
+        # Flutterwave tana dawo da link din a 'data' -> 'link'
+        return data["data"]["link"]
+        
+    except Exception as e:
+        print(f"Request Error: {e}")
         return None
 
-    return data["data"]["authorization_url"]
 
 
 
@@ -871,20 +894,73 @@ def home():
     return "OK", 200
 
 
-# ========= CALLBACK PAGE =========
-@app.route("/paystack-callback", methods=["GET"])
-def paystack_callback():
+# ========= FLUTTERWAVE CALLBACK PAGE =========
+@app.route("/flutterwave-callback", methods=["GET"])
+def flutterwave_callback():
     return """
     <html>
     <head>
         <title>Payment Successful</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta http-equiv="refresh" content="5;url=https://t.me/Aslamtv2bot">
+        <style>
+            body {
+                margin: 0;
+                padding: 0;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                background-color: #f4f7f6;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            }
+            .card {
+                background: white;
+                padding: 40px;
+                border-radius: 20px;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+                text-align: center;
+                width: 90%;
+                max-width: 400px;
+            }
+            .icon {
+                font-size: 70px;
+                color: #2ecc71;
+                margin-bottom: 20px;
+            }
+            h2 {
+                color: #2c3e50;
+                margin-bottom: 10px;
+            }
+            p {
+                color: #7f8c8d;
+                font-size: 18px;
+                line-height: 1.6;
+            }
+            .btn {
+                display: inline-block;
+                margin-top: 25px;
+                padding: 12px 30px;
+                background-color: #0088cc;
+                color: white;
+                text-decoration: none;
+                border-radius: 50px;
+                font-weight: bold;
+                transition: background 0.3s;
+            }
+            .btn:hover {
+                background-color: #0077b5;
+            }
+        </style>
     </head>
-    <body style="font-family: Arial; text-align: center; padding-top: 150px; font-size: 22px;">
-        <h2>✅ Payment Successful</h2>
-        <p>An tabbatar da biyan ka.</p>
-        <p>Kashe browser ka koma telegram</p>
-        <a href="https://t.me/Algaitabot">Komawa Telegram yanzu</a>
+    <body>
+        <div class="card">
+            <div class="icon">✅</div>
+            <h2>BIYA YA NASARA</h2>
+            <p>An tabbatar da biyan ka cikin nasara.</p>
+            <p>Zaka iya rufe browser ka koma Telegram yanzu.</p>
+            <a href="https://t.me/Aslamtv2bot" class="btn">KOMawa TELEGRAM</a>
+        </div>
     </body>
     </html>
     """
