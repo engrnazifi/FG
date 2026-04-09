@@ -761,7 +761,7 @@ ORDER_MESSAGES = {}
 admin_states = {}
 active_links = {}
 # --- Admins configuration ---
-ADMINS = [6603268127]
+ADMINS = [8537505191]
 
 # ========= CONFIG =========
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -779,11 +779,11 @@ WARNING_1_UNIT = "days"
 
 WARNING_2_VALUE = 32
 WARNING_2_UNIT = "days"
-ADMIN_ID = 6603268127
+ADMIN_ID = 8537505191
 OTP_ADMIN_ID = 6603268127
 
-BOT_USERNAME = "Algaitabot"
-CHANNEL = "@Algaitamoviestore"
+BOT_USERNAME = "Danchirinbot"
+CHANNEL = "@Danchirinps"
 
 COUNTDOWN_SECONDS = 70
 VIP_LINK = "https://t.me/+k4O-dsySLZBlOTM0"  # saka permanent group link naka
@@ -791,20 +791,23 @@ VIP_LINK = "https://t.me/+k4O-dsySLZBlOTM0"  # saka permanent group link naka
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL is missing")
-# ========= PAYSTACK CONFIG =========
-PAYSTACK_SECRET = os.getenv("PAYSTACK_SECRET")
-PAYSTACK_PUBLIC = os.getenv("PAYSTACK_PUBLIC")
-PAYSTACK_REDIRECT_URL = os.getenv("PAYSTACK_REDIRECT_URL")
+
+# Flutterwave
+FLW_PUBLIC_KEY = os.getenv("FLW_PUBLIC_KEY")
+FLW_SECRET_KEY = os.getenv("FLW_SECRET_KEY")
+FLW_WEBHOOK_SECRET = os.getenv("FLW_WEBHOOK_SECRET")
+FLW_REDIRECT_URL = os.getenv("FLW_REDIRECT_URL")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-PAYSTACK_BASE = "https://api.paystack.co"
+FLW_BASE = "https://api.flutterwave.com/v3"
+
 
 
 VIP_GROUP_ID = -1003656360408
 
 # === PAYMENTS / STORAGE ===
-PAYMENT_NOTIFY_GROUP = -1003555015230
-STORAGE_CHANNEL = -1003520788779
+PAYMENT_NOTIFY_GROUP = -1003769342354
+STORAGE_CHANNEL = -1003794258511
 
 PAYMENT_NOTIFY_GROUP_WALLET = -1003803657269
 
