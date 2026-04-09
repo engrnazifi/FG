@@ -930,30 +930,34 @@ def send_feedback_prompt(user_id, order_id):
 
 
 
-
-
-
 @app.route("/webhook", methods=["POST"])
-def paystack_webhook():
+def flutterwave_webhook():
     try:
-        # ================= SECURITY & VALIDATION =================
-        signature = request.headers.get("x-paystack-signature")
+        # ================= SECURITY & VALIDATION (FLUTTERWAVE) =================
+        # Flutterwave tana amfani da 'verif-hash' a header
+        signature = request.headers.get("verif-hash")
         if not signature: return "Missing signature", 401
-        computed = hmac.new(PAYSTACK_SECRET.encode(), request.data, hashlib.sha512).hexdigest()
-        if signature != computed: return "Invalid signature", 401
+        
+        # Tabbatar da asirin webhook (Secret Hash)
+        if signature != FLW_WEBHOOK_SECRET: 
+            return "Invalid signature", 401
 
         payload = request.json or {}
-        event = payload.get("event")
-        if event != "charge.success": return "Ignored", 200
-
+        # Flutterwave tana sanya bayanan a cikin 'data' kai tsaye
         data = payload.get("data", {})
-        raw_reference = data.get("reference")
-        paid_amount = int(data.get("amount", 0) / 100)
+        
+        # Duba idan payment din yayi nasara
+        status = (data.get("status") or "").lower()
+        if status not in ("successful", "success"): 
+            return "Ignored", 200
 
-        metadata = data.get("metadata", {}) or {}
-        order_id = metadata.get("order_id")
-        if not order_id and raw_reference:
-            order_id = raw_reference.split("_")[0]
+        # Flutterwave tana amfani da 'tx_ref' a matsayin reference/order_id
+        raw_reference = data.get("tx_ref")
+        paid_amount = int(float(data.get("amount", 0)))
+        currency = data.get("currency")
+
+        # Ciro order_id (kamar yadda kake yi a baya)
+        order_id = raw_reference
         if not order_id: return "Missing order id", 200
 
         conn = get_conn(); cur = conn.cursor()
@@ -975,7 +979,7 @@ def paystack_webhook():
                 wallet_cur.close(); wallet_conn.close(); cur.close(); conn.close()
                 return "Already processed", 200
 
-            # Update Wallet Tables
+            # Update Wallet Tables (Amfani da raw_reference na Flutterwave)
             wallet_cur.execute("UPDATE wallet_deposits SET status='success', paystack_ref=%s, paid_at=NOW() WHERE id=%s", (raw_reference, order_id))
             wallet_cur.execute("INSERT INTO wallet_balance (user_id, balance) VALUES (%s,%s) ON CONFLICT (user_id) DO UPDATE SET balance = wallet_balance.balance + EXCLUDED.balance, updated_at = NOW()", (user_id, paid_amount))
             wallet_cur.execute("INSERT INTO wallet_transactions (user_id, amount, type, reference, description) VALUES (%s,%s,'deposit',%s,'Wallet Top-up')", (user_id, paid_amount, order_id))
@@ -1017,7 +1021,7 @@ def paystack_webhook():
         user_id, expected_amount, paid, order_type = row
         if paid == 1:
             cur.close(); conn.close(); return "Already processed", 200
-        
+
         cur.execute("UPDATE orders SET paid=1 WHERE id=%s", (order_id,))
 
         if order_id in ORDER_MESSAGES:
@@ -1066,7 +1070,7 @@ def paystack_webhook():
         else:
             cur.execute("SELECT i.title, i.group_key FROM order_items oi JOIN items i ON i.id = oi.item_id WHERE oi.order_id=%s", (order_id,))
             rows = cur.fetchall()
-            
+
             groups = {}
             for title, group_key in rows:
                 key = group_key or f"single_{title}"
@@ -1080,7 +1084,7 @@ def paystack_webhook():
                     lines.append(f"• {g['title']} ({g['count']})")
                 else:
                     lines.append(f"• {g['title']}")
-            
+
             titles_text = "\n".join(lines)
             num_items = len(rows)
 
