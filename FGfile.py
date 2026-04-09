@@ -6067,7 +6067,6 @@ def groupitem_deeplink_handler(msg):
 
     try:
         for token in tokens:
-
             # ==== IF ID ====
             if token.isdigit():
                 item_ids.append(int(token))
@@ -6196,7 +6195,7 @@ def groupitem_deeplink_handler(msg):
         order_id = str(uuid.uuid4())
         try:
             cur.execute(
-                "INSERT INTO orders (id, user_id, amount, paid) VALUES (%s,%s,%s,0)",
+                "INSERT INTO orders (id, user_id, amount, paid, type) VALUES (%s,%s,%s,0,'film')",
                 (order_id, uid, total)
             )
             for i in items:
@@ -6214,11 +6213,13 @@ def groupitem_deeplink_handler(msg):
             conn.close()
             return
 
-    # ========= PAYSTACK =========
-    display_title = f"{item_count} item(s)"
-    pay_url = create_paystack_payment(uid, order_id, total, display_title)
+    # ========= FLUTTERWAVE (An sauya daga Paystack) =========
+    display_title = f"{item_count} film(s)"
+    # Mun kira sabon function din mu na Flutterwave
+    pay_url = create_flutterwave_payment(uid, order_id, total, display_title)
 
     if not pay_url:
+        bot.send_message(uid, "❌ Sorry, payment gateway is down. Try again later.")
         cur.close()
         conn.close()
         return
@@ -6232,7 +6233,7 @@ def groupitem_deeplink_handler(msg):
         }.items()
     ]
 
-    # ========= FINAL =========
+    # ========= FINAL UI =========
     kb = InlineKeyboardMarkup()
 
     # PAY NOW (TOP ROW)
@@ -6264,11 +6265,14 @@ def groupitem_deeplink_handler(msg):
         reply_markup=kb
     )
 
-    # ===== NEW: STORE MESSAGE FOR AUTO DELETE AFTER PAYMENT =====
+    # ===== STORE MESSAGE FOR AUTO DELETE AFTER PAYMENT =====
     ORDER_MESSAGES[order_id] = (sent.chat.id, sent.message_id)
 
     cur.close()
     conn.close()
+
+
+   
 
 
 # ========= BUYD (ITEM ONLY | DEEP LINK → DM) =========
