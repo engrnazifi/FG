@@ -889,8 +889,9 @@ def create_flutterwave_payment(user_id, order_id, amount, title):
 def home():
     return "OK", 200
 
+
 # ========= CALLBACK PAGE =========
-@app.route("flutterwave-callback", methods=["GET"])
+@app.route("/flutterwave-callback", methods=["GET"])
 def flutterwave_callback():
     return """
     <html>
@@ -907,6 +908,8 @@ def flutterwave_callback():
     </body>
     </html>
     """
+
+
 # ========= FEEDBACK =========
 def send_feedback_prompt(user_id, order_id):
     try:
