@@ -5640,6 +5640,7 @@ def start_handler(msg):
     bot.send_message(msg.chat.id, "Welcome!")
 
 
+
 # ========= BUYD (ITEM ONLY | DEEP LINK → DM) =========
 from psycopg2.extras import RealDictCursor
 import uuid
@@ -5671,11 +5672,8 @@ def groupitem_deeplink_handler(msg):
 
     try:
         for token in tokens:
-            # ==== IF ID ====
             if token.isdigit():
                 item_ids.append(int(token))
-
-            # ==== IF GROUP KEY ====
             else:
                 cur.execute(
                     "SELECT id FROM items WHERE group_key=%s",
@@ -5683,7 +5681,6 @@ def groupitem_deeplink_handler(msg):
                 )
                 rows = cur.fetchall()
                 item_ids.extend([r["id"] for r in rows])
-
     except Exception:
         cur.close()
         conn.close()
@@ -5693,6 +5690,9 @@ def groupitem_deeplink_handler(msg):
         cur.close()
         conn.close()
         return
+
+    # ✅ FIX: REMOVE DUPLICATES
+    item_ids = list(set(item_ids))
 
     # ========= FETCH ITEMS =========
     try:
@@ -5817,9 +5817,8 @@ def groupitem_deeplink_handler(msg):
             conn.close()
             return
 
-    # ========= FLUTTERWAVE (An sauya daga Paystack) =========
+    # ========= FLUTTERWAVE =========
     display_title = f"{item_count} film(s)"
-    # Mun kira sabon function din mu na Flutterwave
     pay_url = create_flutterwave_payment(uid, order_id, total, display_title)
 
     if not pay_url:
@@ -5839,13 +5838,7 @@ def groupitem_deeplink_handler(msg):
 
     # ========= FINAL UI =========
     kb = InlineKeyboardMarkup()
-
-    # PAY NOW (TOP ROW)
-    kb.add(
-        InlineKeyboardButton("💳 PAY NOW", url=pay_url)
-    )
-
-    # SECOND ROW
+    kb.add(InlineKeyboardButton("💳 PAY NOW", url=pay_url))
     kb.row(
         InlineKeyboardButton("💵Pay with wallet", callback_data=f"walletpay:{order_id}"),
         InlineKeyboardButton("❌ Cancel", callback_data=f"cancel:{order_id}")
@@ -5869,14 +5862,12 @@ def groupitem_deeplink_handler(msg):
         reply_markup=kb
     )
 
-    # ===== STORE MESSAGE FOR AUTO DELETE AFTER PAYMENT =====
     ORDER_MESSAGES[order_id] = (sent.chat.id, sent.message_id)
 
     cur.close()
     conn.close()
 
 
-   
 
 
 # ========= BUYD (ITEM ONLY | DEEP LINK → DM) =========
