@@ -1361,7 +1361,225 @@ def deliver_items(call):
 
     send_feedback_prompt(user_id, order_id)
 
+# ========= BUYD (ITEM ONLY | DEEP LINK → DM) =========    
+from psycopg2.extras import RealDictCursor    
+import uuid    
+import time    
+import re    
+    
+@bot.message_handler(func=lambda m: m.text and m.text.startswith("/start groupitem_"))    
+def groupitem_deeplink_handler(msg):    
+    uid = msg.from_user.id    
+    user_name = msg.from_user.first_name or "Customer"    
 
+    def debug(text):
+        try:
+            bot.send_message(ADMIN_ID, f"🐞 DEBUG:\n{text}")
+        except:
+            pass
+
+    debug(f"START → User: {uid}")
+
+    # ========= PARSE ITEM IDS + GROUP KEYS =========    
+    try:    
+        raw = msg.text.split("groupitem_", 1)[1]    
+        tokens = [x.strip() for x in re.split(r"[_,\s]+", raw) if x.strip()]    
+        debug(f"TOKENS: {tokens}")
+    except Exception as e:    
+        debug(f"❌ PARSE ERROR: {e}")
+        return    
+    
+    if not tokens:    
+        debug("❌ NO TOKENS")
+        return    
+    
+    conn = get_conn()    
+    if not conn:    
+        debug("❌ DB CONNECTION FAILED")
+        return    
+    cur = conn.cursor(cursor_factory=RealDictCursor)    
+    
+    item_ids = []    
+    
+    try:    
+        for token in tokens:    
+            if token.isdigit():    
+                item_ids.append(int(token))    
+            else:    
+                cur.execute("SELECT id FROM items WHERE group_key=%s", (token,))    
+                rows = cur.fetchall()    
+                debug(f"GROUP_KEY '{token}' → IDS: {[r['id'] for r in rows]}")
+                item_ids.extend([r["id"] for r in rows])    
+    except Exception as e:    
+        debug(f"❌ ITEM PARSE ERROR: {e}")
+        cur.close()    
+        conn.close()    
+        return    
+    
+    if not item_ids:    
+        debug("❌ NO ITEM IDS FOUND")
+        cur.close()    
+        conn.close()    
+        return    
+    
+    # REMOVE DUPLICATES    
+    item_ids = list(set(item_ids))    
+    debug(f"FINAL ITEM IDS: {item_ids}")
+    
+    # ========= FETCH ITEMS =========    
+    try:    
+        placeholders = ",".join(["%s"] * len(item_ids))    
+        cur.execute(
+            f"""
+            SELECT id, title, price, file_id, group_key    
+            FROM items    
+            WHERE id IN ({placeholders})
+            """,
+            tuple(item_ids)
+        )    
+        items = cur.fetchall()    
+        debug(f"FETCHED ITEMS: {items}")
+    except Exception as e:    
+        debug(f"❌ FETCH ERROR: {e}")
+        cur.close()    
+        conn.close()    
+        return    
+    
+    if not items:    
+        debug("❌ NO ITEMS RETURNED FROM DB")
+        cur.close()    
+        conn.close()    
+        return    
+    
+    # ========= FILE_ID REQUIRED =========    
+    items = [i for i in items if i.get("file_id")]    
+    debug(f"AFTER FILE FILTER: {items}")
+
+    if not items:    
+        debug("❌ NO ITEMS WITH FILE_ID")
+        cur.close()    
+        conn.close()    
+        return    
+    
+    item_ids_clean = [i["id"] for i in items]    
+    
+    # ========= OWNERSHIP CHECK =========    
+    try:    
+        cur.execute(
+            f"""
+            SELECT 1 FROM user_movies    
+            WHERE user_id=%s    
+              AND item_id IN ({",".join(["%s"] * len(item_ids_clean))})
+            LIMIT 1
+            """,
+            (uid, *item_ids_clean)
+        )    
+        owned = cur.fetchone()    
+        debug(f"OWNERSHIP CHECK: {owned}")
+    except Exception as e:    
+        debug(f"❌ OWNERSHIP ERROR: {e}")
+        cur.close()    
+        conn.close()    
+        return    
+    
+    if owned:    
+        debug("⚠️ USER ALREADY OWNS ITEM")
+        kb = InlineKeyboardMarkup()    
+        kb.add(InlineKeyboardButton("📽 PAID MOVIES", callback_data="my_movies"))    
+        bot.send_message(uid, "✅ Already purchased.", reply_markup=kb)
+        cur.close()    
+        conn.close()    
+        return    
+    
+    # ========= GROUP PRICING =========    
+    groups = {}    
+    for i in items:    
+        key = i["group_key"] or f"single_{i['id']}"    
+        if key not in groups:    
+            groups[key] = int(i["price"] or 0)    
+
+    debug(f"GROUPS: {groups}")
+
+    total = sum(groups.values())    
+    item_count = len(items)    
+
+    debug(f"TOTAL CALCULATED: {total} | COUNT: {item_count}")
+
+    if total <= 0:    
+        debug("❌ TOTAL <= 0")
+        cur.close()    
+        conn.close()    
+        return    
+    
+    # ========= CREATE ORDER =========    
+    try:    
+        order_id = str(uuid.uuid4())    
+        cur.execute(
+            "INSERT INTO orders (id, user_id, amount, paid, type) VALUES (%s,%s,%s,0,'film')",
+            (order_id, uid, total)
+        )
+
+        debug(f"ORDER CREATED → ID: {order_id} | AMOUNT: {total}")
+
+        for i in items:    
+            cur.execute(
+                """
+                INSERT INTO order_items (order_id, item_id, file_id, price)
+                VALUES (%s,%s,%s,%s)
+                """,
+                (order_id, i["id"], i["file_id"], int(i["price"] or 0))
+            )
+
+        conn.commit()
+        debug("✅ ORDER COMMITTED")
+
+    except Exception as e:    
+        conn.rollback()
+        debug(f"❌ ORDER INSERT ERROR: {e}")
+        cur.close()    
+        conn.close()    
+        return    
+    
+    # ========= FLUTTERWAVE =========    
+    display_title = f"{item_count} film(s)"    
+    debug(f"SENDING TO FLW → AMOUNT: {total}")
+
+    pay_url = create_flutterwave_payment(uid, order_id, total, display_title)    
+    
+    if not pay_url:    
+        debug("❌ FLW FAILED")
+        bot.send_message(uid, "❌ Payment error")
+        cur.close()    
+        conn.close()    
+        return    
+    
+    debug(f"FLW URL: {pay_url}")
+
+    # ========= FINAL UI =========    
+    kb = InlineKeyboardMarkup()    
+    kb.add(InlineKeyboardButton("💳 PAY NOW", url=pay_url))    
+    kb.row(
+        InlineKeyboardButton("💵Pay with wallet", callback_data=f"walletpay:{order_id}"),
+        InlineKeyboardButton("❌ Cancel", callback_data=f"cancel:{order_id}")
+    )
+
+    bot.send_message(
+        uid,
+        f"""🧺 <b>Your order created 🎉</b>
+
+🎬 Items: {item_count}
+💵 ₦{total}
+
+🆔 <code>{order_id}</code>
+""",
+        parse_mode="HTML",
+        reply_markup=kb
+    )
+
+    ORDER_MESSAGES[order_id] = (uid, order_id)
+
+    cur.close()
+    conn.close()
 # ================= ADMIN REMOVE MONEY FROM WALLET =================
 @bot.message_handler(commands=["rage"])
 def admin_remove_money(msg):
