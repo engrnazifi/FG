@@ -813,44 +813,64 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 # ========= BOT =========
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
-# ========= FLASK =========
-app = Flask(__name__)
-
-
 import time
 
-def create_paystack_payment(user_id, order_id, amount, title):
+# ========= FLUTTERWAVE PAYMENT =========
+def create_flutterwave_payment(user_id, order_id, amount, title):
+    # Tabbatar da cewa akwai bayanan sirri (Env variables)
+    if not FLW_SECRET_KEY or not FLW_REDIRECT_URL:
+        print("❌ Flutterwave env missing")
+        return None
+
     headers = {
-        "Authorization": f"Bearer {PAYSTACK_SECRET}",
+        "Authorization": f"Bearer {FLW_SECRET_KEY}",
         "Content-Type": "application/json"
     }
 
+    # ✅ FIX: Muna kara time.time() domin tx_ref ya zama unique 
+    # kamar yadda aka yi a Paystack din don gujewa "Transaction reference already exists"
+    tx_ref = f"{order_id}_{int(time.time())}"
+
     payload = {
-        "reference": f"{order_id}_{int(time.time())}",  # ✅ FIX
-        "amount": int(amount) * 100,
+        "tx_ref": tx_ref,
+        "amount": int(amount), # Flutterwave ba ta bukatar * 100
         "currency": "NGN",
-        "callback_url": PAYSTACK_REDIRECT_URL,
-        "email": f"user{user_id}@telegram.com",
-        "metadata": {
+        "redirect_url": FLW_REDIRECT_URL,
+        "customer": {
+            "email": f"user{user_id}@telegram.com",
+            "name": f"TG User {user_id}"
+        },
+        "customizations": {
+            "title": title[:50],
+            "description": f"Order {order_id}"
+        },
+        # Muna saka ainihin order_id a meta don Webhook ya gane shi cikin sauki
+        "meta": {
             "order_id": str(order_id),
-            "user_id": user_id,
-            "title": title[:50]
+            "user_id": user_id
         }
     }
 
-    r = requests.post(
-        f"{PAYSTACK_BASE}/transaction/initialize",
-        json=payload,
-        headers=headers,
-        timeout=30
-    )
+    try:
+        r = requests.post(
+            f"{FLW_BASE}/payments",
+            json=payload,
+            headers=headers,
+            timeout=30
+        )
 
-    data = r.json()
-    if not data.get("status"):
+        data = r.json()
+
+        if r.status_code != 200 or data.get("status") != "success":
+            print("❌ Flutterwave error:", data)
+            return None
+
+        # Authorization link na Flutterwave
+        return data["data"]["link"]
+
+    except Exception as e:
+        print("❌ create_flutterwave_payment error:", e)
         return None
-
-    return data["data"]["authorization_url"]
-
 
 
 
