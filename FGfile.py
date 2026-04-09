@@ -783,13 +783,16 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL is missing")
 
-# ========= PAYSTACK CONFIG =========
-PAYSTACK_SECRET = os.getenv("PAYSTACK_SECRET")
-PAYSTACK_PUBLIC = os.getenv("PAYSTACK_PUBLIC")
-PAYSTACK_REDIRECT_URL = os.getenv("PAYSTACK_REDIRECT_URL")
+
+# Flutterwave
+FLW_PUBLIC_KEY = os.getenv("FLW_PUBLIC_KEY")
+FLW_SECRET_KEY = os.getenv("FLW_SECRET_KEY")
+FLW_WEBHOOK_SECRET = os.getenv("FLW_WEBHOOK_SECRET")
+FLW_REDIRECT_URL = os.getenv("FLW_REDIRECT_URL")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-PAYSTACK_BASE = "https://api.paystack.co"
+
+FLW_BASE = "https://api.flutterwave.com/v3"
 
 VIP_GROUP_ID = -1002780322450
 
