@@ -6508,6 +6508,8 @@ Tura <b>/sendall</b> domin a sake tura items.""",
             conn.close()
 
 
+
+
 import uuid
 import traceback
 from psycopg2.extras import RealDictCursor
@@ -6620,10 +6622,11 @@ def pay_all_unpaid(call):
         # ==================================================
         order_id = str(uuid.uuid4())
 
+        # Mun saka type='film' domin webhook ya gane
         cur.execute(
             """
-            INSERT INTO orders (id, user_id, amount, paid)
-            VALUES (%s, %s, %s, 0)
+            INSERT INTO orders (id, user_id, amount, paid, type)
+            VALUES (%s, %s, %s, 0, 'film')
             """,
             (order_id, uid, total_amount)
         )
@@ -6664,9 +6667,9 @@ def pay_all_unpaid(call):
             conn.commit()
 
         # ==================================================
-        # 6️⃣ PAYSTACK
+        # 6️⃣ FLUTTERWAVE (An sauya daga Paystack)
         # ==================================================
-        pay_url = create_paystack_payment(
+        pay_url = create_flutterwave_payment(
             uid,
             order_id,
             total_amount,
@@ -6674,6 +6677,7 @@ def pay_all_unpaid(call):
         )
 
         if not pay_url:
+            bot.send_message(uid, "❌ Error generating payment link. Please try again.")
             return
 
         # ==================================================
@@ -6723,10 +6727,12 @@ def pay_all_unpaid(call):
             reply_markup=kb
         )
 
-        # ===== NEW: STORE MESSAGE FOR AUTO DELETE AFTER PAYMENT =====
+        # ===== STORE MESSAGE FOR AUTO DELETE AFTER PAYMENT =====
         ORDER_MESSAGES[order_id] = (sent.chat.id, sent.message_id)
 
     except Exception:
+        # Don kiyaye bot din daga tsayawa idan akwai error
+        print(traceback.format_exc())
         pass
 
     finally:
@@ -6735,6 +6741,7 @@ def pay_all_unpaid(call):
             conn.close()
         except:
             pass
+
 
 import uuid
 from datetime import datetime
@@ -7248,8 +7255,9 @@ def handle_callback(c):
             conn = get_conn()
             cur = conn.cursor(cursor_factory=RealDictCursor)
 
+            # Mun kara type='film' domin Flutterwave Webhook ya gane
             cur.execute(
-                "INSERT INTO orders (id,user_id,amount,paid) VALUES (%s,%s,%s,0)",
+                "INSERT INTO orders (id,user_id,amount,paid,type) VALUES (%s,%s,%s,0,'film')",
                 (order_id, uid, total)
             )
 
@@ -7289,10 +7297,11 @@ def handle_callback(c):
             pass
 
         # ==================================================
-        # PAYSTACK
+        # FLUTTERWAVE (An sauya daga Paystack)
         # ==================================================
         try:
-            pay_url = create_paystack_payment(
+            # An yi amfani da create_flutterwave_payment yadda ka bukata
+            pay_url = create_flutterwave_payment(
                 uid,
                 order_id,
                 total,
@@ -7358,7 +7367,8 @@ def handle_callback(c):
 
         bot.answer_callback_query(c.id)
         return
- 
+
+
 
 
     
