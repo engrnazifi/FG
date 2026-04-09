@@ -6892,6 +6892,7 @@ Danna Pay now domin biya 👇👇
         cur.close()
         conn.close()
 
+
 # ======= GROUPITEM (IDS + GROUP_KEY SUPPORT | UPDATED FORMAT) =========        
 from psycopg2.extras import RealDictCursor        
 import uuid        
@@ -7054,7 +7055,8 @@ def groupitem_deeplink_handler(msg):
             return        
 
     try:        
-        pay_url = create_paystack_payment(        
+        # ✅ ZUWA FLUTTERWAVE
+        pay_url = create_flutterwave_payment(        
             uid,        
             order_id,        
             total,        
