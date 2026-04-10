@@ -1020,129 +1020,355 @@ def send_feedback_prompt(user_id, order_id):
 @app.route("/webhook", methods=["POST"])
 def flutterwave_webhook():
     try:
-        print("🔔 WEBHOOK HIT")
-
-        def debug(msg):
-            print(msg)
-            try:
-                bot.send_message(ADMIN_ID, f"🐞 DEBUG:\n{msg}")
-            except:
-                pass
-
-        # ================= SECURITY =================
+        # ================= SECURITY & VALIDATION (FLUTTERWAVE) =================
+        # Flutterwave tana amfani da 'verif-hash' a header
         signature = request.headers.get("verif-hash")
-        debug(f"Signature: {signature}")
-
-        if not signature:
-            debug("❌ Missing signature")
+        if not signature: 
             return "Missing signature", 401
-
-        if signature != FLW_WEBHOOK_SECRET:
-            debug("❌ Invalid signature")
+        
+        # Tabbatar da asirin webhook (Secret Hash)
+        if signature != FLW_WEBHOOK_SECRET: 
             return "Invalid signature", 401
 
         # ================= PAYLOAD =================
         payload = request.json or {}
-        debug(f"Payload: {payload}")
-
+        # Flutterwave tana sanya bayanan a cikin 'data' kai tsaye
         data = payload.get("data", {})
+        
+        # Duba idan payment din yayi nasara
         status = (data.get("status") or "").lower()
-
-        debug(f"Status: {status}")
-
-        if status not in ("successful", "success"):
-            debug("❌ Payment not successful")
+        if status not in ("successful", "success"): 
             return "Ignored", 200
 
+        # Flutterwave tana amfani da 'tx_ref' a matsayin reference
         raw_reference = data.get("tx_ref")
         currency = data.get("currency")
         paid_amount = int(float(data.get("amount", 0)))
 
-        debug(f"TX_REF: {raw_reference}")
-        debug(f"Amount: {paid_amount} | Currency: {currency}")
-
-        # ✅ FIX reference
+        # ✅ FIX REFERENCE (Wayo): Ciro order_id ta hanyar cire timestamp (_177...)
         order_id = raw_reference.split("_")[0] if raw_reference else None
-        debug(f"Order ID: {order_id}")
 
         if not order_id:
-            debug("❌ Order ID missing")
             return "Order ID missing", 200
 
         # ================= DB =================
         conn = get_conn()
         cur = conn.cursor()
 
-        cur.execute("SELECT user_id, amount, paid, type FROM orders WHERE id=%s", (order_id,))
+        cur.execute(
+            """
+            SELECT user_id, amount, paid, type
+            FROM orders
+            WHERE id=%s
+            """,
+            (order_id,)
+        )
         row = cur.fetchone()
 
-        debug(f"Order DB Result: {row}")
+        if row:
+            user_id, expected_amount, paid, order_type = row
+        else:
+            order_type = None
 
-        # ================= WALLET =================
+        # =====================================================
+        # ================= WALLET TOPUP ======================
+        # =====================================================
+
         if not row:
-            debug("🔍 Checking wallet...")
-
             wallet_conn = get_wallet_conn()
             wallet_cur = wallet_conn.cursor()
 
-            wallet_cur.execute("SELECT user_id, amount, status FROM wallet_deposits WHERE id=%s", (order_id,))
+            wallet_cur.execute(
+                """
+                SELECT user_id, amount, status
+                FROM wallet_deposits
+                WHERE id=%s
+                """,
+                (order_id,)
+            )
+
             dep = wallet_cur.fetchone()
 
-            debug(f"Wallet Result: {dep}")
-
             if not dep:
-                debug("❌ Not found in both ORDER & WALLET")
+                wallet_cur.close()
+                wallet_conn.close()
+                cur.close()
+                conn.close()
                 return "Order not found", 200
 
             user_id, expected_amount, status = dep
 
             if status == "success":
-                debug("⚠️ Already processed wallet")
+                wallet_cur.close()
+                wallet_conn.close()
+                cur.close()
+                conn.close()
                 return "Already processed", 200
 
             if paid_amount != expected_amount or currency != "NGN":
-                debug("❌ Wrong wallet payment")
+                wallet_cur.close()
+                wallet_conn.close()
+                cur.close()
+                conn.close()
                 return "Wrong payment", 200
 
-            # UPDATE WALLET
-            wallet_cur.execute("UPDATE wallet_deposits SET status='success' WHERE id=%s", (order_id,))
-            wallet_cur.execute("INSERT INTO wallet_balance (user_id, balance) VALUES (%s,%s) ON CONFLICT (user_id) DO UPDATE SET balance = wallet_balance.balance + EXCLUDED.balance", (user_id, paid_amount))
+            wallet_cur.execute(
+                """
+                UPDATE wallet_deposits
+                SET status='success',
+                    paystack_ref=%s,
+                    paid_at=NOW()
+                WHERE id=%s
+                """,
+                (raw_reference, order_id)
+            )
+
+            wallet_cur.execute(
+                """
+                INSERT INTO wallet_balance (user_id, balance)
+                VALUES (%s,%s)
+                ON CONFLICT (user_id)
+                DO UPDATE SET
+                balance = wallet_balance.balance + EXCLUDED.balance,
+                updated_at = NOW()
+                """,
+                (user_id, paid_amount)
+            )
+
+            wallet_cur.execute(
+                """
+                INSERT INTO wallet_transactions
+                (user_id, amount, type, reference, description)
+                VALUES (%s,%s,'deposit',%s,'Wallet Top-up')
+                """,
+                (user_id, paid_amount, order_id)
+            )
+
             wallet_conn.commit()
+            wallet_cur.close()
+            wallet_conn.close()
 
-            debug("✅ Wallet updated")
+            # ================= DELETE ORIGINAL ORDER MESSAGE =================
+            if order_id in ORDER_MESSAGES:
+                chat_id, message_id = ORDER_MESSAGES[order_id]
+                try:
+                    bot.delete_message(chat_id, message_id)
+                except:
+                    pass
+                del ORDER_MESSAGES[order_id]
 
-            bot.send_message(user_id, f"💰 Wallet credited ₦{paid_amount}")
+            # ================= USER INFO =================
+            cur.execute(
+                """
+                SELECT first_name, last_name
+                FROM visited_users
+                WHERE user_id=%s
+                """,
+                (user_id,)
+            )
+            u = cur.fetchone()
 
+            if u and (u[0] or u[1]):
+                full_name = f"{u[0] or ''} {u[1] or ''}".strip()
+            else:
+                try:
+                    chat = bot.get_chat(user_id)
+                    full_name = f"{chat.first_name or ''} {chat.last_name or ''}".strip()
+                except:
+                    full_name = "User"
+
+            try:
+                chat = bot.get_chat(user_id)
+                tg_username = f"@{chat.username}" if chat.username else "unknown"
+            except:
+                tg_username = "unknown"
+
+            wallet_kb = InlineKeyboardMarkup()
+            wallet_kb.add(
+                InlineKeyboardButton(
+                    "🏦MY WALLET💵",
+                    callback_data="wallet"
+                )
+            )
+
+            bot.send_message(
+                user_id,
+                f"""🎉 <b>CONGRATULATIONS MALAM {full_name}</b>
+
+💰 <b>Your wallet credited:</b> ₦{paid_amount}
+
+🗃 <b>Order ID:</b> <code>{order_id}</code>
+
+Your deposit was successful.
+
+Use the button below to open your wallet.
+""",
+                parse_mode="HTML",
+                reply_markup=wallet_kb
+            )
+
+            if PAYMENT_NOTIFY_GROUP:
+                from datetime import datetime, timedelta
+                now = (datetime.now() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+
+                bot.send_message(
+                    PAYMENT_NOTIFY_GROUP,
+                    f"""💰 <b>TOP-UP SUCCESSFUL</b>
+
+👤 <b>Name:</b> {full_name}
+🔗 <b>Username:</b> {tg_username}
+🆔 <b>User ID:</b> <code>{user_id}</code>
+
+💳 <b>Top-up:</b> ₦{paid_amount}
+
+🗃 <b>Order ID:</b> <code>{order_id}</code>
+📊 <b>Status:</b> success
+
+⏰ <b>Time:</b> {now}
+""",
+                    parse_mode="HTML"
+                )
+
+            cur.close()
+            conn.close()
             return "OK", 200
 
-        # ================= ORDER =================
-        user_id, expected_amount, paid, order_type = row
-
         if paid == 1:
-            debug("⚠️ Already processed order")
+            cur.close()
+            conn.close()
             return "Already processed", 200
 
         if paid_amount != expected_amount or currency != "NGN":
-            debug("❌ Wrong order payment")
+            cur.close()
+            conn.close()
             return "Wrong payment", 200
 
-        cur.execute("UPDATE orders SET paid=1 WHERE id=%s", (order_id,))
-        conn.commit()
+        # ================= MARK AS PAID =================
+        cur.execute(
+            "UPDATE orders SET paid=1 WHERE id=%s",
+            (order_id,)
+        )
 
-        debug("✅ Order marked as paid")
-
-        # ================= DELETE MESSAGE =================
+        # ================= DELETE ORIGINAL ORDER MESSAGE =================
         if order_id in ORDER_MESSAGES:
+            chat_id, message_id = ORDER_MESSAGES[order_id]
             try:
-                bot.delete_message(ORDER_MESSAGES[order_id][0], ORDER_MESSAGES[order_id][1])
-                debug("🗑 Order message deleted")
+                bot.delete_message(chat_id, message_id)
             except:
-                debug("⚠️ Failed to delete message")
+                pass
             del ORDER_MESSAGES[order_id]
 
-        # ================= FILM =================
+        # ================= USER INFO =================
+        cur.execute(
+            """
+            SELECT first_name, last_name
+            FROM visited_users
+            WHERE user_id=%s
+            """,
+            (user_id,)
+        )
+        u = cur.fetchone()
+
+        if u and (u[0] or u[1]):
+            full_name = f"{u[0] or ''} {u[1] or ''}".strip()
+        else:
+            try:
+                chat = bot.get_chat(user_id)
+                full_name = f"{chat.first_name or ''} {chat.last_name or ''}".strip()
+            except:
+                full_name = "User"
+
+        try:
+            chat = bot.get_chat(user_id)
+            tg_username = f"@{chat.username}" if chat.username else "unknown"
+        except:
+            tg_username = "unknown"
+
+        # =====================================================
+        # ================== FILM ORDER =======================
+        # =====================================================
         if order_type == "film":
-            debug("🎬 Film order detected")
+            cur.execute(
+                """
+                SELECT i.title, i.group_key
+                FROM order_items oi
+                JOIN items i ON i.id = oi.item_id
+                WHERE oi.order_id=%s
+                """,
+                (order_id,)
+            )
+            rows = cur.fetchall()
+
+            if not rows:
+                cur.close()
+                conn.close()
+                return "Empty order", 200
+
+            groups = {}
+            for title, group_key in rows:
+                key = group_key or f"single_{title}"
+                if key not in groups:
+                    groups[key] = {"title": title, "count": 0}
+                groups[key]["count"] += 1
+
+            lines = []
+            for g in groups.values():
+                if g["count"] > 1:
+                    lines.append(f"{g['title']} ({g['count']})")
+                else:
+                    lines.append(f"{g['title']}")
+
+            titles_text = ", ".join(lines) if lines else "N/A"
+
+            # ================= CASHBACK REWARD =================
+            cashback = (paid_amount // 200) * CASHBACK
+            if cashback > 200:
+                cashback = 200
+
+            if cashback > 0:
+                wallet_conn = get_wallet_conn()
+                wallet_cur = wallet_conn.cursor()
+
+                wallet_cur.execute(
+                    """
+                    INSERT INTO wallet_balance (user_id, balance)
+                    VALUES (%s,%s)
+                    ON CONFLICT (user_id)
+                    DO UPDATE SET
+                    balance = wallet_balance.balance + EXCLUDED.balance,
+                    updated_at = NOW()
+                    """,
+                    (user_id, cashback)
+                )
+
+                wallet_cur.execute(
+                    """
+                    INSERT INTO wallet_transactions
+                    (user_id, amount, type, reference, description)
+                    VALUES (%s,%s,'cashback',%s,'Movie Cashback Reward')
+                    """,
+                    (user_id, cashback, order_id)
+                )
+
+                wallet_conn.commit()
+                wallet_cur.close()
+                wallet_conn.close()
+
+                bot.send_message(
+                    user_id,
+                    f"""🎁 Cashback Reward🎉
+
+Wallet ID: <code>{user_id}</code>
+
+You received ₦{cashback} cashback,  
+
+Ka duba wallet din ka, zaka iya siyayya dashi a nan gaba.""" ,
+                    parse_mode="HTML"
+                )
+
+            conn.commit()
+            cur.close()
+            conn.close()
 
             kb = InlineKeyboardMarkup()
             kb.add(
@@ -1154,35 +1380,210 @@ def flutterwave_webhook():
 
             bot.send_message(
                 user_id,
-                f"🎉 Payment successful!\nOrder: {order_id}\nAmount: ₦{paid_amount}",
+                f"""🎉 <b>PAYMENT SUCCESSFUL</b>
+
+👤 <b>Name:</b> {full_name}
+🆔 <b>User ID:</b> <code>{user_id}</code>
+
+🎬 <b>Items:</b> {titles_text}
+🗃 <b>Order ID:</b> <code>{order_id}</code>
+
+💳 <b>Amount Paid:</b> ₦{paid_amount}
+
+⬇️ Click the button below to download your files.
+""",
+                parse_mode="HTML",
                 reply_markup=kb
             )
 
-            debug("📤 Download button sent")
+            if PAYMENT_NOTIFY_GROUP:
+                from datetime import datetime, timedelta
+                now = (datetime.now() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
 
-        # ================= VIP =================
+                bot.send_message(
+                    PAYMENT_NOTIFY_GROUP,
+                    f"""✅ <b>NEW PAYMENT RECEIVED</b>
+
+👤 <b>Name:</b> {full_name}
+🔗 <b>Username:</b> {tg_username}
+🆔 <b>User ID:</b> <code>{user_id}</code>
+
+🎬 <b>Items:</b> {titles_text}
+🗃 <b>Order ID:</b> <code>{order_id}</code>
+
+💰 <b>Amount:</b> ₦{paid_amount}
+⏰ <b>Time:</b> {now}
+""",
+                    parse_mode="HTML"
+                )
+
+            return "OK", 200
+
+        # =====================================================
+        # ================== VIP ORDER ========================
+        # =====================================================
         elif order_type == "vip":
-            debug("💎 VIP order detected")
+            from datetime import datetime, timedelta
 
-            bot.send_message(user_id, "💎 VIP Activated!")
+            start_date = datetime.now()
+            end_date = start_date + (
+                timedelta(minutes=VIP_DURATION_VALUE)
+                if VIP_DURATION_UNIT == "minutes"
+                else timedelta(days=VIP_DURATION_VALUE)
+            )
 
-        cur.close()
-        conn.close()
+            start_local = start_date + timedelta(hours=1)
+            end_local = end_date + timedelta(hours=1)
 
-        debug("🚀 WEBHOOK DONE")
+            already_in_group = False
+            try:
+                member = bot.get_chat_member(VIP_GROUP_ID, user_id)
+                if member.status in ["member", "administrator", "creator"]:
+                    already_in_group = True
+            except:
+                already_in_group = False
+
+            if already_in_group:
+                cur.execute(
+                    """
+                    INSERT INTO vip_members
+                    (user_id, order_id, join_date, expire_at, status, warn1_sent, warn2_sent, payment_date)
+                    VALUES (%s,%s,%s,%s,'active',FALSE,FALSE,NOW())
+                    ON CONFLICT (user_id)
+                    DO UPDATE SET
+                        order_id = EXCLUDED.order_id,
+                        join_date = EXCLUDED.join_date,
+                        expire_at = EXCLUDED.expire_at,
+                        status = 'active',
+                        warn1_sent = FALSE,
+                        warn2_sent = FALSE,
+                        payment_date = NOW()
+                    """,
+                    (user_id, order_id, start_date, end_date)
+                )
+
+                conn.commit()
+                cur.close()
+                conn.close()
+
+                bot.send_message(
+                    user_id,
+                    f"""💎 <b>AN SABUNTA VIP NAKA</b>
+
+Muna tayaka murnar sabunta biyan VIP ɗinka.
+
+Domin more samun duk fim ɗin da ranka yake so,
+ci gaba da ziyartar VIP Group kawai.
+
+📅 <b>Ka biya a yau:</b> {start_local.strftime("%Y-%m-%d")}
+⏳ <b>Sake biya aranar ko kafin:</b> {end_local.strftime("%Y-%m-%d")}
+
+Na gode da kasancewa tare da mu 🙏""",
+                    parse_mode="HTML"
+                )
+
+                if PAYMENT_NOTIFY_GROUP:
+                    now = (datetime.now() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+
+                    bot.send_message(
+                        PAYMENT_NOTIFY_GROUP,
+                        f"""💎 <b>VIP RENEWAL PAYMENT</b>
+
+👤 <b>Name:</b> {full_name}
+🔗 <b>Username:</b> {tg_username}
+🆔 <b>User ID:</b> <code>{user_id}</code>
+
+🗃 <b>Order ID:</b> <code>{order_id}</code>
+
+💰 <b>Amount:</b> ₦{paid_amount}
+⏰ <b>Time:</b> {now}
+""",
+                        parse_mode="HTML"
+                    )
+
+                try:
+                    bot.send_message(
+                        ADMIN_ID,
+                        f"🔔 VIP RENEWAL\n\n👤 {full_name}\n🆔 {user_id}\n💰 ₦{paid_amount}\n\nYa sabunta VIP dinsa."
+                    )
+                except:
+                    pass
+
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO vip_members
+                    (user_id, order_id, join_date, expire_at, status, warn1_sent, warn2_sent, payment_date)
+                    VALUES (%s,%s,NULL,NULL,'active',FALSE,FALSE,NOW())
+                    ON CONFLICT (user_id)
+                    DO UPDATE SET
+                        order_id = EXCLUDED.order_id,
+                        join_date = NULL,
+                        expire_at = NULL,
+                        status = 'active',
+                        warn1_sent = FALSE,
+                        warn2_sent = FALSE,
+                        payment_date = NOW()
+                    """,
+                    (user_id, order_id)
+                )
+
+                conn.commit()
+                cur.close()
+                conn.close()
+
+                vip_kb = InlineKeyboardMarkup()
+                vip_kb.add(
+                    InlineKeyboardButton(
+                        "🔐 JOIN VIP GROUP",
+                        callback_data=f"vipnow:{order_id}"
+                    )
+                )
+
+                bot.send_message(
+                    user_id,
+                    f"""💎 <b>VIP SUBSCRIPTION ACTIVATED</b>
+
+👤 <b>Name:</b> {full_name}
+🆔 <b>User ID:</b> <code>{user_id}</code>
+
+💳 <b>Amount Paid:</b> ₦{paid_amount}
+
+📅 <b>Start Date:</b> {start_local.strftime("%Y-%m-%d")}
+⏳ <b>End Date:</b> {end_local.strftime("%Y-%m-%d")}
+
+🔐 Click the button below to join the VIP Group.
+""",
+                    parse_mode="HTML",
+                    reply_markup=vip_kb
+                )
+
+                if PAYMENT_NOTIFY_GROUP:
+                    now = (datetime.now() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+
+                    bot.send_message(
+                        PAYMENT_NOTIFY_GROUP,
+                        f"""💎 <b>NEW VIP SUBSCRIPTION</b>
+
+👤 <b>Name:</b> {full_name}
+🔗 <b>Username:</b> {tg_username}
+🆔 <b>User ID:</b> <code>{user_id}</code>
+
+🗃 <b>Order ID:</b> <code>{order_id}</code>
+
+💰 <b>Amount:</b> ₦{paid_amount}
+⏰ <b>Time:</b> {now}
+""",
+                        parse_mode="HTML"
+                    )
+
+            return "OK", 200
+
         return "OK", 200
 
     except Exception as e:
         print(f"Webhook Error: {e}")
-        try:
-            bot.send_message(ADMIN_ID, f"❌ ERROR:\n{str(e)}")
-        except:
-            pass
-        return "ERROR", 500
-
-
-
-
+        return "Internal Error", 500
 
 
 # 
@@ -1361,225 +1762,7 @@ def deliver_items(call):
 
     send_feedback_prompt(user_id, order_id)
 
-# ========= BUYD (ITEM ONLY | DEEP LINK → DM) =========    
-from psycopg2.extras import RealDictCursor    
-import uuid    
-import time    
-import re    
-    
-@bot.message_handler(func=lambda m: m.text and m.text.startswith("/start groupitem_"))    
-def groupitem_deeplink_handler(msg):    
-    uid = msg.from_user.id    
-    user_name = msg.from_user.first_name or "Customer"    
 
-    def debug(text):
-        try:
-            bot.send_message(ADMIN_ID, f"🐞 DEBUG:\n{text}")
-        except:
-            pass
-
-    debug(f"START → User: {uid}")
-
-    # ========= PARSE ITEM IDS + GROUP KEYS =========    
-    try:    
-        raw = msg.text.split("groupitem_", 1)[1]    
-        tokens = [x.strip() for x in re.split(r"[_,\s]+", raw) if x.strip()]    
-        debug(f"TOKENS: {tokens}")
-    except Exception as e:    
-        debug(f"❌ PARSE ERROR: {e}")
-        return    
-    
-    if not tokens:    
-        debug("❌ NO TOKENS")
-        return    
-    
-    conn = get_conn()    
-    if not conn:    
-        debug("❌ DB CONNECTION FAILED")
-        return    
-    cur = conn.cursor(cursor_factory=RealDictCursor)    
-    
-    item_ids = []    
-    
-    try:    
-        for token in tokens:    
-            if token.isdigit():    
-                item_ids.append(int(token))    
-            else:    
-                cur.execute("SELECT id FROM items WHERE group_key=%s", (token,))    
-                rows = cur.fetchall()    
-                debug(f"GROUP_KEY '{token}' → IDS: {[r['id'] for r in rows]}")
-                item_ids.extend([r["id"] for r in rows])    
-    except Exception as e:    
-        debug(f"❌ ITEM PARSE ERROR: {e}")
-        cur.close()    
-        conn.close()    
-        return    
-    
-    if not item_ids:    
-        debug("❌ NO ITEM IDS FOUND")
-        cur.close()    
-        conn.close()    
-        return    
-    
-    # REMOVE DUPLICATES    
-    item_ids = list(set(item_ids))    
-    debug(f"FINAL ITEM IDS: {item_ids}")
-    
-    # ========= FETCH ITEMS =========    
-    try:    
-        placeholders = ",".join(["%s"] * len(item_ids))    
-        cur.execute(
-            f"""
-            SELECT id, title, price, file_id, group_key    
-            FROM items    
-            WHERE id IN ({placeholders})
-            """,
-            tuple(item_ids)
-        )    
-        items = cur.fetchall()    
-        debug(f"FETCHED ITEMS: {items}")
-    except Exception as e:    
-        debug(f"❌ FETCH ERROR: {e}")
-        cur.close()    
-        conn.close()    
-        return    
-    
-    if not items:    
-        debug("❌ NO ITEMS RETURNED FROM DB")
-        cur.close()    
-        conn.close()    
-        return    
-    
-    # ========= FILE_ID REQUIRED =========    
-    items = [i for i in items if i.get("file_id")]    
-    debug(f"AFTER FILE FILTER: {items}")
-
-    if not items:    
-        debug("❌ NO ITEMS WITH FILE_ID")
-        cur.close()    
-        conn.close()    
-        return    
-    
-    item_ids_clean = [i["id"] for i in items]    
-    
-    # ========= OWNERSHIP CHECK =========    
-    try:    
-        cur.execute(
-            f"""
-            SELECT 1 FROM user_movies    
-            WHERE user_id=%s    
-              AND item_id IN ({",".join(["%s"] * len(item_ids_clean))})
-            LIMIT 1
-            """,
-            (uid, *item_ids_clean)
-        )    
-        owned = cur.fetchone()    
-        debug(f"OWNERSHIP CHECK: {owned}")
-    except Exception as e:    
-        debug(f"❌ OWNERSHIP ERROR: {e}")
-        cur.close()    
-        conn.close()    
-        return    
-    
-    if owned:    
-        debug("⚠️ USER ALREADY OWNS ITEM")
-        kb = InlineKeyboardMarkup()    
-        kb.add(InlineKeyboardButton("📽 PAID MOVIES", callback_data="my_movies"))    
-        bot.send_message(uid, "✅ Already purchased.", reply_markup=kb)
-        cur.close()    
-        conn.close()    
-        return    
-    
-    # ========= GROUP PRICING =========    
-    groups = {}    
-    for i in items:    
-        key = i["group_key"] or f"single_{i['id']}"    
-        if key not in groups:    
-            groups[key] = int(i["price"] or 0)    
-
-    debug(f"GROUPS: {groups}")
-
-    total = sum(groups.values())    
-    item_count = len(items)    
-
-    debug(f"TOTAL CALCULATED: {total} | COUNT: {item_count}")
-
-    if total <= 0:    
-        debug("❌ TOTAL <= 0")
-        cur.close()    
-        conn.close()    
-        return    
-    
-    # ========= CREATE ORDER =========    
-    try:    
-        order_id = str(uuid.uuid4())    
-        cur.execute(
-            "INSERT INTO orders (id, user_id, amount, paid, type) VALUES (%s,%s,%s,0,'film')",
-            (order_id, uid, total)
-        )
-
-        debug(f"ORDER CREATED → ID: {order_id} | AMOUNT: {total}")
-
-        for i in items:    
-            cur.execute(
-                """
-                INSERT INTO order_items (order_id, item_id, file_id, price)
-                VALUES (%s,%s,%s,%s)
-                """,
-                (order_id, i["id"], i["file_id"], int(i["price"] or 0))
-            )
-
-        conn.commit()
-        debug("✅ ORDER COMMITTED")
-
-    except Exception as e:    
-        conn.rollback()
-        debug(f"❌ ORDER INSERT ERROR: {e}")
-        cur.close()    
-        conn.close()    
-        return    
-    
-    # ========= FLUTTERWAVE =========    
-    display_title = f"{item_count} film(s)"    
-    debug(f"SENDING TO FLW → AMOUNT: {total}")
-
-    pay_url = create_flutterwave_payment(uid, order_id, total, display_title)    
-    
-    if not pay_url:    
-        debug("❌ FLW FAILED")
-        bot.send_message(uid, "❌ Payment error")
-        cur.close()    
-        conn.close()    
-        return    
-    
-    debug(f"FLW URL: {pay_url}")
-
-    # ========= FINAL UI =========    
-    kb = InlineKeyboardMarkup()    
-    kb.add(InlineKeyboardButton("💳 PAY NOW", url=pay_url))    
-    kb.row(
-        InlineKeyboardButton("💵Pay with wallet", callback_data=f"walletpay:{order_id}"),
-        InlineKeyboardButton("❌ Cancel", callback_data=f"cancel:{order_id}")
-    )
-
-    bot.send_message(
-        uid,
-        f"""🧺 <b>Your order created 🎉</b>
-
-🎬 Items: {item_count}
-💵 ₦{total}
-
-🆔 <code>{order_id}</code>
-""",
-        parse_mode="HTML",
-        reply_markup=kb
-    )
-
-    ORDER_MESSAGES[order_id] = (uid, order_id)
-
-    cur.close()
-    conn.close()
 # ================= ADMIN REMOVE MONEY FROM WALLET =================
 @bot.message_handler(commands=["rage"])
 def admin_remove_money(msg):
@@ -5858,7 +6041,6 @@ def start_handler(msg):
     bot.send_message(msg.chat.id, "Welcome!")
 
 
-
 # ========= BUYD (ITEM ONLY | DEEP LINK → DM) =========
 from psycopg2.extras import RealDictCursor
 import uuid
@@ -5890,8 +6072,11 @@ def groupitem_deeplink_handler(msg):
 
     try:
         for token in tokens:
+            # ==== IF ID ====
             if token.isdigit():
                 item_ids.append(int(token))
+
+            # ==== IF GROUP KEY ====
             else:
                 cur.execute(
                     "SELECT id FROM items WHERE group_key=%s",
@@ -5899,6 +6084,7 @@ def groupitem_deeplink_handler(msg):
                 )
                 rows = cur.fetchall()
                 item_ids.extend([r["id"] for r in rows])
+
     except Exception:
         cur.close()
         conn.close()
@@ -5908,9 +6094,6 @@ def groupitem_deeplink_handler(msg):
         cur.close()
         conn.close()
         return
-
-    # ✅ FIX: REMOVE DUPLICATES
-    item_ids = list(set(item_ids))
 
     # ========= FETCH ITEMS =========
     try:
@@ -6035,8 +6218,9 @@ def groupitem_deeplink_handler(msg):
             conn.close()
             return
 
-    # ========= FLUTTERWAVE =========
+    # ========= FLUTTERWAVE (An sauya daga Paystack) =========
     display_title = f"{item_count} film(s)"
+    # Mun kira sabon function din mu na Flutterwave
     pay_url = create_flutterwave_payment(uid, order_id, total, display_title)
 
     if not pay_url:
@@ -6056,7 +6240,13 @@ def groupitem_deeplink_handler(msg):
 
     # ========= FINAL UI =========
     kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("💳 PAY NOW", url=pay_url))
+
+    # PAY NOW (TOP ROW)
+    kb.add(
+        InlineKeyboardButton("💳 PAY NOW", url=pay_url)
+    )
+
+    # SECOND ROW
     kb.row(
         InlineKeyboardButton("💵Pay with wallet", callback_data=f"walletpay:{order_id}"),
         InlineKeyboardButton("❌ Cancel", callback_data=f"cancel:{order_id}")
@@ -6080,12 +6270,14 @@ def groupitem_deeplink_handler(msg):
         reply_markup=kb
     )
 
+    # ===== STORE MESSAGE FOR AUTO DELETE AFTER PAYMENT =====
     ORDER_MESSAGES[order_id] = (sent.chat.id, sent.message_id)
 
     cur.close()
     conn.close()
 
 
+   
 
 
 # ========= BUYD (ITEM ONLY | DEEP LINK → DM) =========
