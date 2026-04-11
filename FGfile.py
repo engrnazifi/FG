@@ -2503,6 +2503,8 @@ Zabi adadin da zaka deposit zuwa wallet din ka👇👇
         reply_markup=kb
     )
 
+
+
 import uuid
 from psycopg2.extras import RealDictCursor
 
@@ -2576,8 +2578,8 @@ def wallet_amount_handler(c):
     cur.close()
     conn.close()
 
-    # ===== CREATE PAYSTACK LINK =====
-    pay_url = create_paystack_payment(
+    # ===== CREATE FLUTTERWAVE LINK =====
+    pay_url = create_flutterwave_payment(
         uid,
         order_id,
         amount,
