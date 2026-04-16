@@ -822,66 +822,6 @@ app = Flask(__name__)
 
 
 
-import time
-
-# ========= FLUTTERWAVE PAYMENT =========
-def create_flutterwave_payment(user_id, order_id, amount, title):
-    # Tabbatar da cewa akwai bayanan sirri (Env variables)
-    if not FLW_SECRET_KEY or not FLW_REDIRECT_URL:
-        print("❌ Flutterwave env missing")
-        return None
-
-    headers = {
-        "Authorization": f"Bearer {FLW_SECRET_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    # ✅ FIX: Muna kara time.time() domin tx_ref ya zama unique 
-    # kamar yadda aka yi a Paystack din don gujewa "Transaction reference already exists"
-    tx_ref = f"{order_id}_{int(time.time())}"
-
-    payload = {
-        "tx_ref": tx_ref,
-        "amount": int(amount), # Flutterwave ba ta bukatar * 100
-        "currency": "NGN",
-        "redirect_url": FLW_REDIRECT_URL,
-        "customer": {
-            "email": f"user{user_id}@telegram.com",
-            "name": f"TG User {user_id}"
-        },
-        "customizations": {
-            "title": title[:50],
-            "description": f"Order {order_id}"
-        },
-        # Muna saka ainihin order_id a meta don Webhook ya gane shi cikin sauki
-        "meta": {
-            "order_id": str(order_id),
-            "user_id": user_id
-        }
-    }
-
-    try:
-        r = requests.post(
-            f"{FLW_BASE}/payments",
-            json=payload,
-            headers=headers,
-            timeout=30
-        )
-
-        data = r.json()
-
-        if r.status_code != 200 or data.get("status") != "success":
-            print("❌ Flutterwave error:", data)
-            return None
-
-        # Authorization link na Flutterwave
-        return data["data"]["link"]
-
-    except Exception as e:
-        print("❌ create_flutterwave_payment error:", e)
-        return None
-
-
 
 
 # ========= HOME / KEEP ALIVE =========
