@@ -4889,13 +4889,13 @@ def reply_menu(uid=None):
 
     # ===== ROW 4 (VIP GROUP) =====
     kb.add(
-        InlineKeyboardButton("💎 VIP GROUP", callback_data="vipgroup")
+        InlineKeyboardButton("💎 VIP GROUP", callback_data="vipgroupp")
     )
 
     # ===== ADMIN ONLY BUTTONS =====
     if uid in ADMINS:
         kb.add(
-            InlineKeyboardButton("🏛SERIES&MOV🌐", callback_data="groupitems")
+            InlineKeyboardButton("ADD FILM🎬", callback_data="groupitems")
         )
 
     return kb
@@ -4907,7 +4907,7 @@ def user_main_menu(uid=None):
 
     cart_label = tr_user(uid, "btn_cart", default="Check cart")
     help_label = tr_user(uid, "btn_help", default="HELP")
-    vip_label = "🔐VIP GROUP"
+    vip_label = "Nothing"
     done_label = "Done"
     wallet_label = "🏦My wallet💰"
 
