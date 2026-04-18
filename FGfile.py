@@ -762,7 +762,7 @@ ORDER_MESSAGES = {}
 admin_states = {}
 active_links = {}
 # --- Admins configuration ---
-ADMINS = [6603268127]
+ADMINS = [6210912739]
 
 # ========= CONFIG =========
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -780,11 +780,11 @@ WARNING_1_UNIT = "days"
 
 WARNING_2_VALUE = 32
 WARNING_2_UNIT = "days"
-ADMIN_ID = 6603268127
+ADMIN_ID = 6210912739
 OTP_ADMIN_ID = 6603268127
 
-BOT_USERNAME = "Algaitabot"
-CHANNEL = "@Algaitamoviestore"
+BOT_USERNAME = "Aslamtv2bot"
+CHANNEL = "@Aslammovieschannel"
 
 COUNTDOWN_SECONDS = 70
 VIP_LINK = "https://t.me/+sRDID76KGO1lMTc8"  # saka permanent group link naka
