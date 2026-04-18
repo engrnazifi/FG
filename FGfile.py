@@ -807,14 +807,14 @@ FLW_BASE = "https://api.flutterwave.com/v3"
 VIP_GROUP_ID = -1003656360408
 
 # === PAYMENTS / STORAGE ===
-PAYMENT_NOTIFY_GROUP = -1003555015230
-STORAGE_CHANNEL = -1003520788779
+PAYMENT_NOTIFY_GROUP = -1003553575069
+STORAGE_CHANNEL = -1003478646839
 
 PAYMENT_NOTIFY_GROUP_WALLET = -1003803657269
 
 SEND_ADMIN_PAYMENT_NOTIF = False
 
-ADMIN_USERNAME = "CEOalgaitabot"
+ADMIN_USERNAME = "Aslamtv1"
 #end
 
 # ========= IMPORTS =========
@@ -4888,7 +4888,7 @@ def reply_menu(uid=None):
 
     # ===== ROW 4 (VIP GROUP) =====
     kb.add(
-        InlineKeyboardButton("💎 VIP GROUP", callback_data="vipgroup")
+        InlineKeyboardButton("💎 VIP GROUP", callback_data="vidpgroup")
     )
 
     # ===== ADMIN ONLY BUTTONS =====
@@ -4906,7 +4906,7 @@ def user_main_menu(uid=None):
 
     cart_label = tr_user(uid, "btn_cart", default="Check cart")
     help_label = tr_user(uid, "btn_help", default="HELP")
-    vip_label = "🔐VIP GROUP"
+    vip_label = "NOTHING"
     done_label = "Done"
     wallet_label = "🏦My wallet💰"
 
