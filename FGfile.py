@@ -779,7 +779,7 @@ BOT_USERNAME = "Aslamtv2bot"
 CHANNEL = "@Aslammovieschannel"
 
 COUNTDOWN_SECONDS = 70
-VIP_LINK = "https://t.me/+nLQP1kVfgtNiNzM0"  # saka permanent group link naka
+VIP_LINK = "https://t.me/+nWd53i86zJ0xOWU8"  # saka permanent group link naka
 # ========= DATABASE CONFIG =========
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
@@ -796,7 +796,7 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 FLW_BASE = "https://api.flutterwave.com/v3"
 
-VIP_GROUP_ID = -1002780322450
+VIP_GROUP_ID = -1003142478702
 
 PAYMENT_NOTIFY_GROUP_WALLET = -1003733762941
 
