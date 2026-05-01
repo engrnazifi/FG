@@ -1493,6 +1493,60 @@ def deliver_items(call):
 
 
 
+@bot.message_handler(commands=['sendwarning'])
+def send_warning(msg):
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    try:
+        parts = msg.text.split()
+
+        if len(parts) < 2:
+            bot.reply_to(msg, "❌ Amfani: /sendwarning <group_id>")
+            return
+
+        group_id = int(parts[1])
+
+        warning_text = """
+⚠️ GARGADI NA MUSAMMAN
+
+Mun gano ana amfani da wannan bot ba tare da izini ba a wannan group.
+
+⛔ Muna gargadinka da ka cire bot ɗin nan cikin gaggawa.
+
+📡 Ana bibiyar duk wani aiki da ake yi ta wannan bot.
+
+❗ Idan ba a cire shi ba:
+– Bot dinmu zan goge wannan group kuma zai kai karar admin din kai tsaye zuwa hukumar Telegram 
+
+– Za a iya ɗaukar mataki akan amfani mara izini
+Don haka kayi gaggawar cire bot a wannan group 
+Kuma karka sake.
+
+Idan kunne yaji?.
+
+🙏 Muna godiya da haɗin kai.
+"""
+
+        bot.send_message(group_id, warning_text)
+
+        bot.reply_to(msg, "✅ An tura sakon gargadi cikin group din lafiya.")
+
+    except Exception as e:
+        error_text = str(e)
+
+        # Idan bot baya cikin group
+        if "chat not found" in error_text:
+            bot.reply_to(msg, "❌ Ban samu group din ba. Ko bot baya ciki ne.")
+
+        # Idan bashi da permission
+        elif "not enough rights" in error_text or "forbidden" in error_text:
+            bot.reply_to(msg, "❌ Ni bot bani da damar tura sako a wannan group din.")
+
+        # Idan wani error daban
+        else:
+            bot.reply_to(msg, f"❌ An kasa tura sakon.\nError: {e}")
+
 @bot.callback_query_handler(func=lambda c: c.data == "vipgroup")
 def vip_group_info(call):
 
