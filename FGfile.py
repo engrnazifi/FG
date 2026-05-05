@@ -2082,7 +2082,7 @@ def vip_warning_system():
                         bot.send_message(
                             user_id,
                             f"⏳ TUNATARWA ZANYI MAKA\n\n"
-                            f"Subscription ɗinka (ALGAITA VIP) zai kare nan da {time_left_value} {unit_text}.\n\n"
+                            f"Sanarwa:-Nazo na sanar da kai lokacin Biyan kudin watanka yayi kayi kokari ka Sabunta biya, zai kare {time_left_value} {unit_text}.\n\n"
                             f"Muna matuƙar godiya da kasancewarka tare da mu ❤️\n"
                             f"Da fatan za ka sabunta kafin lokacin ya ƙare domin cigaba da more VIP group.",
                             reply_markup=kb
@@ -2127,7 +2127,7 @@ def vip_warning_system():
                         bot.send_message(
                             user_id,
                             f"⚠NAZO NA SANAR DAKAI\n\n"
-                            f"Subscription ɗinka (ALGAITA VIP) zai kare nan da {time_left_value2} {unit_text2}.\n\n"
+                            f"Tunatarwa:- Har yanzu Baka Sabunta Biyan Kudin Watanka ba, Karka manta zai kare a {time_left_value2} {unit_text2}.\n\n"
                             f"Idan ba ka sabunta ba kafin lokacin ya cika, za a cire ka daga VIP group.\n"
                             f"Da fatan za ka sabunta yanzu domin kada a cire ka.",
                             reply_markup=kb
