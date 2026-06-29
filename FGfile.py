@@ -7708,7 +7708,7 @@ def pay_all_unpaid(call):
 
         conn.commit()  
 
-        pay_url = create_paystack_payment(  
+        pay_url = create_flutterwave_payment(  
             user_id,  
             order_id,  
             total_amount,  
@@ -8648,142 +8648,145 @@ def handle_callback(c):
 
 
 
-    from psycopg2.extras import RealDictCursor  
-    import uuid  
 
-    # ==================================================  
-    # CHECKOUT (CART)  
-    # ==================================================  
-    if data == "checkout":  
+    from psycopg2.extras import RealDictCursor    
+    import uuid    
 
-        rows = get_cart(uid)  
-        if not rows:  
-            bot.answer_callback_query(c.id, "❌ Cart ɗinka babu komai.")  
-            return  
+    # ==================================================    
+    # CHECKOUT (CART)    
+    # ==================================================    
+    if data == "checkout":    
 
-        groups = {}  
-        total = 0  
+        rows = get_cart(uid)    
+        if not rows:    
+            bot.answer_callback_query(c.id, "❌ Cart ɗinka babu komai.")    
+            return    
 
-        for item_id, title, price, file_id, group_key in rows:  
+        groups = {}    
+        total = 0    
 
-            if not file_id:  
-                continue  
+        for item_id, title, price, file_id, group_key in rows:    
 
-            p = int(price or 0)  
-            if p <= 0:  
-                continue  
+            if not file_id:    
+                continue    
 
-            key = group_key if group_key else f"single_{item_id}"  
+            p = int(price or 0)    
+            if p <= 0:    
+                continue    
 
-            if key not in groups:  
-                groups[key] = {  
-                    "price": p,  
-                    "items": []  
-                }  
+            key = group_key if group_key else f"single_{item_id}"    
 
-            groups[key]["items"].append((item_id, title, file_id))  
+            if key not in groups:    
+                groups[key] = {    
+                    "price": p,    
+                    "items": []    
+                }    
 
-        if not groups:  
-            bot.answer_callback_query(c.id, "❌ Babu item mai delivery a cart.")  
-            return  
+            groups[key]["items"].append((item_id, title, file_id))    
 
-        for g in groups.values():  
-            total += g["price"]  
+        if not groups:    
+            bot.answer_callback_query(c.id, "❌ Babu item mai delivery a cart.")    
+            return    
 
-        if total <= 0:  
-            bot.answer_callback_query(c.id, "❌ Farashi bai dace ba.")  
-            return  
+        for g in groups.values():    
+            total += g["price"]    
 
-        order_id = str(uuid.uuid4())  
+        if total <= 0:    
+            bot.answer_callback_query(c.id, "❌ Farashi bai dace ba.")    
+            return    
 
-        conn = None  
-        cur = None  
+        order_id = str(uuid.uuid4())    
 
-        try:  
-            conn = get_conn()  
-            cur = conn.cursor(cursor_factory=RealDictCursor)  
+        conn = None    
+        cur = None    
 
-            cur.execute(  
-                "INSERT INTO orders (id,user_id,amount,paid) VALUES (%s,%s,%s,0)",  
-                (order_id, uid, total)  
-            )  
+        try:    
+            conn = get_conn()    
+            cur = conn.cursor(cursor_factory=RealDictCursor)    
 
-            for g in groups.values():  
-                for item_id, title, file_id in g["items"]:  
-                    cur.execute(  
-                        """  
-                        INSERT INTO order_items  
-                        (order_id,item_id,file_id,price)  
-                        VALUES (%s,%s,%s,%s)  
-                        """,  
-                        (order_id, item_id, file_id, g["price"])  
-                    )  
+            cur.execute(    
+                "INSERT INTO orders (id,user_id,amount,paid) VALUES (%s,%s,%s,0)",    
+                (order_id, uid, total)    
+            )    
 
-            conn.commit()  
+            for g in groups.values():    
+                for item_id, title, file_id in g["items"]:    
+                    cur.execute(    
+                        """    
+                        INSERT INTO order_items    
+                        (order_id,item_id,file_id,price)    
+                        VALUES (%s,%s,%s,%s)    
+                        """,    
+                        (order_id, item_id, file_id, g["price"])    
+                    )    
 
-        except:  
-            if conn:  
-                conn.rollback()  
-            bot.answer_callback_query(c.id, "❌ Checkout failed.")  
-            return  
+            conn.commit()    
 
-        finally:  
-            if cur:  
-                cur.close()  
-            if conn:  
-                conn.close()  
+        except:    
+            if conn:    
+                conn.rollback()    
+            bot.answer_callback_query(c.id, "❌ Checkout failed.")    
+            return    
 
-        clear_cart(uid)  
+        finally:    
+            if cur:    
+                cur.close()    
+            if conn:    
+                conn.close()    
 
-        pay_url = create_paystack_payment(uid, order_id, total, "Cart Order")  
-        if not pay_url:  
-            return  
+        clear_cart(uid)    
 
-        kb = InlineKeyboardMarkup()  
-        kb.add(InlineKeyboardButton("💳 PAY NOW", url=pay_url))  
-        kb.add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel:{order_id}"))  
-        kb.add(InlineKeyboardButton("💵Pay with wallet", callback_data=f"walletpay:{order_id}"))  
+        # === ANAN AN CANZA ZUWA FLUTTERWAVE ===
+        pay_url = create_flutterwave_payment(uid, order_id, total, "Cart Order")    
+        if not pay_url:    
+            return    
 
-        first_name = c.from_user.first_name or ""  
-        last_name = c.from_user.last_name or ""  
-        full_name = f"{first_name} {last_name}".strip()  
+        kb = InlineKeyboardMarkup()    
+        kb.add(InlineKeyboardButton("💳 PAY NOW", url=pay_url))    
+        kb.add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel:{order_id}"))    
+        kb.add(InlineKeyboardButton("💵Pay with wallet", callback_data=f"walletpay:{order_id}"))    
 
-        first_title = None  
-        for g in groups.values():  
-            if g["items"]:  
-                first_title = g["items"][0][1]  
-                break  
+        first_name = c.from_user.first_name or ""    
+        last_name = c.from_user.last_name or ""    
+        full_name = f"{first_name} {last_name}".strip()    
 
-        item_count = sum(len(g["items"]) for g in groups.values())  
+        first_title = None    
+        for g in groups.values():    
+            if g["items"]:    
+                first_title = g["items"][0][1]    
+                break    
 
-        msg = bot.send_message(  
-            uid,  
-            f"""🧾 <b>Order Created</b>  
+        item_count = sum(len(g["items"]) for g in groups.values())    
 
-👤 <b>Name:</b> {full_name}  
+        msg_text = f"""🧾 <b>Order Created</b>    
+👤 Name: {full_name}
+🎬 You will buy this film
 
-🎬 <b>You will buy this film</b>  
-🎥 {first_title}  
+🎥 {first_title}
+📦 Films: {item_count}
 
-📦 Films: {item_count}  
-💵 Total: ₦{total}  
+💵 Total: ₦{total}
+🆔 Order ID:
+{order_id}
+Danna Pay now domin biya 👇👇
 
-🆔 Order ID:  
-<code>{order_id}</code>  
+"""
 
-Danna Pay now domin biya 👇👇  
-""",  
-            parse_mode="HTML",  
-            reply_markup=kb  
-        )  
+        try:
+            msg = bot.send_message(    
+                uid,    
+                msg_text,
+                parse_mode="HTML",
+                reply_markup=kb
+            )
+            
+            # ✅ SAVE MESSAGE ID  
+            ORDER_MESSAGES[order_id] = (msg.chat.id, msg.message_id)  
+        except:
+            pass
 
-        # ✅ SAVE MESSAGE ID
-        ORDER_MESSAGES[order_id] = (msg.chat.id, msg.message_id)
-
-        bot.answer_callback_query(c.id)  
-        return  
-
-
+        bot.answer_callback_query(c.id)    
+        return
 # ==================================================  
     # BUY / BUYDM / BUYGROUP  
 # ==================================================  
@@ -8937,7 +8940,7 @@ Danna Pay now domin biya 👇👇
 
         title = items[0]["title"] if len(items) == 1 else f"{len(items)} Items"  
 
-        pay_url = create_paystack_payment(uid, order_id, total, title)  
+        pay_url = create_flutterwave_payment(uid, order_id, total, title)  
         if not pay_url:  
             return  
 
