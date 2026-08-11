@@ -7943,11 +7943,38 @@ def series_finalize(m):
     if sess.get("stage") != "meta":
         return
 
-    # ================= PARSE CAPTION =================
+    # ================= PARSE CAPTION (SABON GYARA MAI RIQE DA SARARI) =================
     try:
-        title, raw_price = data.strip().rsplit("\n", 1)
+        # 1. Muna raba rubutun layi-layi duka ba tare da mun goge layukan da babu komai ba
+        all_lines = data.strip().split("\n")
+
+        # 2. Muna tace ainihin layukan da ke da rubutu don gano title da price kawai
+        valid_lines = [l.strip() for l in all_lines if l.strip()]
+
+        if len(valid_lines) < 2:
+            bot.send_message(uid, "❌ Caption bai dace ba. Akallla ana bukatar Suna da Farashi.")
+            return
+
+        # Layin farko na ainihin rubutun shi ne title na DB
+        title = valid_lines[0]
+
+        # Layin karshe na ainihin rubutun shi ne farashi
+        raw_price = valid_lines[-1]
         has_comma = "," in raw_price
         price = int(raw_price.replace(",", "").strip())
+
+        # 3. Anan za mu nemo daidai inda farashin yake a jikin asalin rubutunka na caption
+        # Domin mu yanke shi, sannan mu bar duk sauran rubutun da sararin da ka bayar lafiya lau
+        last_line_raw = all_lines[-1]
+
+        if last_line_raw.strip() == raw_price:
+            # Idan farashin shi ne layi na karshe da gaske, muna cire shi kawai
+            channel_display_title = "\n".join(all_lines[:-1]).strip()
+        else:
+            # Idan akwai empty lines a karkashin farashi, muna gano inda farashin yake mu yanke
+            idx = data.strip().rfind(raw_price)
+            channel_display_title = data.strip()[:idx].strip()
+
     except:
         bot.send_message(uid, "❌ Caption bai dace ba.")
         return
@@ -7965,7 +7992,7 @@ def series_finalize(m):
     try:
         cur.execute(
             "INSERT INTO series (title, price, poster_file_id) VALUES (%s,%s,%s) RETURNING id",
-            (title, price, poster_file_id)
+            (title, price, poster_file_id) # Iya asalin title (layin farko) yake shiga DB
         )
         series_id = cur.fetchone()[0]
     except:
@@ -7974,14 +8001,15 @@ def series_finalize(m):
     item_ids = []
     created_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     group_key = str(uuid.uuid4())
-
     total_files = len(sess["files"])
-    saved_count = 0
 
-    # 🔹 Sako ɗaya kawai
-    loading_msg = bot.send_message(ADMIN_ID, "⏳ Loading...")
+    # 🔥 ONE CLEAN MESSAGE
+    progress_msg = bot.send_message(
+        ADMIN_ID,
+        f"⏳ Loading... (0/{total_files})"
+    )
 
-    # ================= SAFE SEND FUNCTION =================
+    # ================= SAFE SEND =================
     def safe_send_document(chat_id, file_id, caption):
 
         while True:
@@ -7994,18 +8022,20 @@ def series_finalize(m):
                     retry = int(e.result_json["parameters"]["retry_after"])
 
                     bot.edit_message_text(
-                        f"⚠️ Rate limit hit.\nSleeping {retry}s...\n\n{saved_count}/{total_files} saved",
+                        f"⏸ Rate limit hit.\nWaiting {retry}s...\n"
+                        f"{len(item_ids)}/{total_files} saved",
                         ADMIN_ID,
-                        loading_msg.message_id
+                        progress_msg.message_id
                     )
 
                     time.sleep(retry)
 
                     bot.edit_message_text(
-                        f"⏳ Loading...\n\n{saved_count}/{total_files} saved",
+                        f"⏳ Loading... ({len(item_ids)}/{total_files})",
                         ADMIN_ID,
-                        loading_msg.message_id
+                        progress_msg.message_id
                     )
+
                     continue
                 else:
                     return None
@@ -8014,7 +8044,7 @@ def series_finalize(m):
                 return None
 
     # ================= UPLOAD LOOP =================
-    for index, f in enumerate(sess["files"], start=1):
+    for f in sess["files"]:
 
         msg = safe_send_document(
             STORAGE_CHANNEL,
@@ -8039,7 +8069,7 @@ def series_finalize(m):
                 RETURNING id
                 """,
                 (
-                    title,
+                    title, # Iya asalin title (layin farko) yake shiga DB anan ma
                     price,
                     doc.file_id,
                     f["file_name"],
@@ -8051,23 +8081,18 @@ def series_finalize(m):
             )
             new_id = cur.fetchone()[0]
             item_ids.append(new_id)
-            saved_count += 1
 
         except:
             continue
 
-        # Update progress every 5 files only (domin rage spam)
-        if saved_count % 5 == 0 or saved_count == total_files:
-            try:
-                bot.edit_message_text(
-                    f"⏳ Loading...\n\n{saved_count}/{total_files} saved",
-                    ADMIN_ID,
-                    loading_msg.message_id
-                )
-            except:
-                pass
+        # Update progress cleanly
+        bot.edit_message_text(
+            f"⏳ Loading... ({len(item_ids)}/{total_files})",
+            ADMIN_ID,
+            progress_msg.message_id
+        )
 
-        time.sleep(1.2)
+        time.sleep(1.1)
 
     # ================= COMMIT =================
     try:
@@ -8077,16 +8102,6 @@ def series_finalize(m):
 
     cur.close()
     conn.close()
-
-    # Final update
-    try:
-        bot.edit_message_text(
-            f"✅ Completed!\n\n{saved_count}/{total_files} saved",
-            ADMIN_ID,
-            loading_msg.message_id
-        )
-    except:
-        pass
 
     # ================= PUBLIC POST =================
     try:
@@ -8104,10 +8119,11 @@ def series_finalize(m):
             )
         )
 
+        # Anan za a fitar da dukkan tsarin rubutun tare da empty lines (sarari) da ka bari
         bot.send_photo(
             CHANNEL,
             poster_file_id,
-            caption=f"🎬 <b>{title}</b>\n💵Price: ₦{display_price}",
+            caption=f"🎬 <b>{channel_display_title}</b>\n💵Price: ₦{display_price}",
             parse_mode="HTML",
             reply_markup=kb
         )
@@ -8115,8 +8131,17 @@ def series_finalize(m):
     except:
         pass
 
+    # Final message
+    bot.edit_message_text(
+        f"✅ Completed.\n{len(item_ids)}/{total_files} saved successfully.",
+        ADMIN_ID,
+        progress_msg.message_id
+    )
+
     bot.send_message(uid, "🎉 Series an adana dukka lafiya.")
     del series_sessions[uid]
+
+
 
 
 
