@@ -1450,7 +1450,8 @@ ORDER_MESSAGES = {}
 admin_states = {}
 active_links = {}
 # --- Admins configuration ---
-ADMINS = [6603268127]
+ADMINS = [6210912739, 5009954635] 
+
 
 # ========= CONFIG =========
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -1480,8 +1481,9 @@ WARNING_2_VALUE = 2  # Misali: Kwana 2 kafin expire
 
 
 
-BOT_USERNAME = "Algaitabot"
-CHANNEL = "@Algaitamoviestore"
+BOT_USERNAME = "Aslamtv2bot"
+CHANNEL = "@Aslammovieschannel"
+
 
 COUNTDOWN_SECONDS = 70
 VIP_LINK = "https://t.me/+sRDID76KGO1lMTc8"  # saka permanent group link naka
@@ -1499,21 +1501,14 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 FLW_BASE = "https://api.flutterwave.com/v3"
 
+VIP_GROUP_ID = -1003142478702
 
+PAYMENT_NOTIFY_GROUP_WALLET = -1003733762941
 
-VIP_GROUP_ID = -1003656360408
-
-# === PAYMENTS / STORAGE ===
-PAYMENT_NOTIFY_GROUP = -1003555015230
-STORAGE_CHANNEL = -1003520788779
-
-PAYMENT_NOTIFY_GROUP_WALLET = -1003803657269
-
+PAYMENT_NOTIFY_GROUP = -1003553575069
+STORAGE_CHANNEL = -1003478646839
 SEND_ADMIN_PAYMENT_NOTIF = False
-
-ADMIN_USERNAME = "CEOalgaitabot"
-#end
-
+ADMIN_USERNAME = "Aslamtv1"
 # ========= IMPORTS =========
 import telebot
 import hmac
