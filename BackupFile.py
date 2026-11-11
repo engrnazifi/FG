@@ -184,6 +184,49 @@ supabase_wallet_cur = supabase_wallet_conn.cursor()
 
 
 #=== Karshe
+
+
+# ============================================================
+# AUTOMATIC MIGRATION: ENSURE cashback_amount IN ITEMS TABLE
+# ============================================================
+def ensure_cashback_column():
+    try:
+        conn = get_conn() # Ko sunan function ɗinka na connection na Source
+        if not conn:
+            print("❌ Ba a samun connection zuwa Database ba.")
+            return
+        
+        cur = conn.cursor()
+        
+        # 1️⃣ Duba ko column ɗin yana nan a teburin items
+        cur.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_schema = 'public' 
+              AND table_name = 'items' 
+              AND column_name = 'cashback_amount'
+        """)
+        
+        column_exists = cur.fetchone()
+        
+        if not column_exists:
+            # Idan babu shi, ƙara shi ta automatic
+            cur.execute("ALTER TABLE items ADD COLUMN cashback_amount INTEGER DEFAULT 0;")
+            conn.commit()
+            print("✅ An Ƙara column 'cashback_amount' cikin nasara a teburin items.")
+        else:
+            print("ℹ️ Column 'cashback_amount' ya riga ya wanzu, an yi skip.")
+            
+        cur.close()
+        conn.close()
+        
+    except Exception as e:
+        print("❌ Kuskure wajen duba ko ƙara column ɗin cashback_amount:", repr(e))
+
+# Kira wannan aikin a lokacin da bot ɗinka yake tashi (Startup)
+ensure_cashback_column()
+
+
 # =============================
 # ENSURE ITEMS TABLE
 # =============================
